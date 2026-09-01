@@ -79,24 +79,37 @@ def cycle(store: Store, risk_cache: RiskCache, now: datetime, *, do_seed: bool) 
     """One scan iteration. The whole body is guarded so one bad cycle never
     kills the loop -- failures are logged via ``logger.exception`` and swallowed.
     """
+    log = logging.getLogger(_LOGGER_NAME)
     try:
         if do_seed:
             universe.seed(store, now)
         poller.poll_once(store, now)
         hits = detector.detect_all(store, now)
+        if hits:
+            log.info(
+                "detected %d anomaly hit(s): %s",
+                len(hits), ", ".join(f"{h.address[:8]}(x{h.spike_ratio:.1f})" for h in hits),
+            )
         for hit in hits:
             snap = _latest_or_none(store, hit.address)
             if snap is None:
                 # Unreachable while the detector only fires on stored history,
                 # but spec section 6 requires every hit to reach the table.
                 store.record_hit(hit, passed_gate=False, fail_reason="no snapshot")
+                log.info("gate: %s dropped (no snapshot)", hit.address[:8])
                 continue
-            passed, _reason, ctx = filters.evaluate(hit, store, risk_cache, snap)
+            passed, reason, ctx = filters.evaluate(hit, store, risk_cache, snap)
             if passed:
                 ctx.symbol = snap.symbol  # Ruling B
-                alerter.send(hit, ctx, store, now)
+                sent = alerter.send(hit, ctx, store, now)
+                log.info(
+                    "gate: %s PASSED -> alert %s",
+                    hit.address[:8], "sent" if sent else "not sent (cooldown / delivery)",
+                )
+            else:
+                log.info("gate: %s dropped (%s)", hit.address[:8], reason)
     except Exception:
-        logging.getLogger(_LOGGER_NAME).exception("cycle failed")
+        log.exception("cycle failed")
 
 
 def _handler(signum, frame) -> None:  # pragma: no cover - invoked by the OS
