@@ -89,8 +89,8 @@ def _snapshot_from_pair(address: str, pair: dict, fetched_at: datetime) -> Marke
         vol_h1=_to_float(volume.get("h1")),
         vol_h6=_to_float(volume.get("h6")),
         vol_h24=_to_float(volume.get("h24")),
-        buys_m5=int(txns_m5["buys"]) if isinstance(txns_m5.get("buys"), (int, float)) else None,
-        sells_m5=int(txns_m5["sells"]) if isinstance(txns_m5.get("sells"), (int, float)) else None,
+        buys_m5=int(txns_m5["buys"]) if isinstance(txns_m5.get("buys"), (int, float)) and not isinstance(txns_m5.get("buys"), bool) else None,
+        sells_m5=int(txns_m5["sells"]) if isinstance(txns_m5.get("sells"), (int, float)) and not isinstance(txns_m5.get("sells"), bool) else None,
         pair_created_at=created,
         dex=pair.get("dexId"),
     )
@@ -102,10 +102,9 @@ def _chunks(seq: list[str], n: int):
 
 
 def fetch_snapshots(addresses: list[str]) -> dict[str, MarketSnapshot]:
-    from memescreen import config as _cfg
     now = datetime.now(UTC)
     out: dict[str, MarketSnapshot] = {}
-    for chunk in _chunks(list(addresses), max(1, _cfg.BATCH_SIZE)):
+    for chunk in _chunks(list(addresses), max(1, config.BATCH_SIZE)):
         url = f"{config.DEXSCREENER_BASE}/tokens/v1/solana/{','.join(chunk)}"
         try:
             payload = request_json(_SOURCE, "GET", url)

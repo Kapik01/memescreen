@@ -1,4 +1,4 @@
-import json as _json
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -73,10 +73,6 @@ def test_fetch_market_data_missing_optional_fields_are_none():
     assert m.socials == []
 
 
-def _load(name):
-    return _json.loads((FIX / name).read_text())
-
-
 @respx.mock
 def test_fetch_snapshots_groups_and_picks_primary_pair():
     respx.get(url__regex=r"https://api\.dexscreener\.com/tokens/v1/solana/.+").mock(
@@ -109,13 +105,15 @@ def test_fetch_snapshots_one_bad_chunk_does_not_sink_the_rest(monkeypatch):
     from memescreen import config
     monkeypatch.setattr(config, "BATCH_SIZE", 2)
     responses = [httpx.Response(500), httpx.Response(500), httpx.Response(200, json=_load("dexscreener_batch.json"))]
-    respx.get(url__regex=r"https://api\.dexscreener\.com/tokens/v1/solana/.+").mock(
+    route = respx.get(url__regex=r"https://api\.dexscreener\.com/tokens/v1/solana/.+").mock(
         side_effect=responses
     )
     out = fetch_snapshots(["X" * 44, "Y" * 44,
                            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
                            "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"])
-    assert "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" in out
+    assert route.call_count == 3
+    assert set(out) == {"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                        "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"}
 
 
 @respx.mock
