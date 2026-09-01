@@ -31,6 +31,31 @@ DexScreener and RugCheck were. If holder counts, top-10 concentration, or the
 token name/symbol fallback look wrong, check those paths against a real response
 first — the fixtures in `tests/fixtures/` encode the same assumption.
 
+## scan — continuous volume-spike scanner
+
+    memescreen scan
+
+Long-running. Polls a wide universe of Solana tokens every ~60s, learns each
+token's own normal 5-minute volume, and alerts when one spikes ≥8x its own
+baseline **and** the spike is buy-driven, accelerating on the hour scale, not
+draining liquidity, and fresh — then only if the token passes a strict safety
+gate (LP locked ≥90%, mint & freeze renounced, ≥$20k liquidity, ≥60 min old,
+holder count rising alongside volume, no RugCheck "danger").
+
+Alerts go to Telegram when `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set
+in `.env`; otherwise the scanner prints them and logs to `data/missed_alerts.log`.
+Needs `BIRDEYE_API_KEY` for the holder-growth check — without it, every hit
+fails that check (fail-closed) and nothing alerts.
+
+State lives in `data/memescreen.db` (SQLite). Stop with Ctrl+C — it finishes
+the current cycle, prunes, and exits cleanly.
+
+**This is not a money printer.** Most Solana volume spikes are manufactured to
+trip exactly this kind of screener. The scanner makes you faster and better-
+informed; it does not make you right. Thresholds live in `.env` (see
+`config.py`) — expect to tune `SPIKE_RATIO_MIN`, `MIN_LIQUIDITY`, and
+`MIN_AGE_MIN` against real results.
+
 ## Tests
 
 ```bash
