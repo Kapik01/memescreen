@@ -1,4 +1,4 @@
-import json
+import json as _json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -7,7 +7,7 @@ import pytest
 import respx
 
 from memescreen.providers.base import ProviderError
-from memescreen.providers.dexscreener import _pick_primary_pair, fetch_market_data
+from memescreen.providers.dexscreener import _pick_primary_pair, fetch_market_data, fetch_snapshots, fetch_feed_addresses
 
 FIX = Path(__file__).parent.parent / "fixtures"
 ADDR = "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm"
@@ -71,3 +71,74 @@ def test_fetch_market_data_missing_optional_fields_are_none():
     assert m.volume_24h_usd is None
     assert m.pair_created_at is None
     assert m.socials == []
+
+
+def _load(name):
+    return _json.loads((FIX / name).read_text())
+
+
+@respx.mock
+def test_fetch_snapshots_groups_and_picks_primary_pair():
+    respx.get(url__regex=r"https://api\.dexscreener\.com/tokens/v1/solana/.+").mock(
+        return_value=httpx.Response(200, json=_load("dexscreener_batch.json"))
+    )
+    out = fetch_snapshots(["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                           "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"])
+    assert set(out) == {"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                        "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"}
+    a = out["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
+    assert a.liquidity_usd == 250000.0          # highest-liquidity pair won
+    assert a.vol_m5 == 8000.0 and a.buys_m5 == 40 and a.sells_m5 == 6
+    assert a.vol_h1 == 60000.0 and a.vol_h6 == 120000.0
+    assert a.dex == "raydium"
+
+
+@respx.mock
+def test_fetch_snapshots_chunks_by_batch_size(monkeypatch):
+    from memescreen import config
+    monkeypatch.setattr(config, "BATCH_SIZE", 2)
+    route = respx.get(url__regex=r"https://api\.dexscreener\.com/tokens/v1/solana/.+").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    fetch_snapshots(["A" * 44, "B" * 44, "C" * 44, "D" * 44, "E" * 44])
+    assert route.call_count == 3            # 2 + 2 + 1
+
+
+@respx.mock
+def test_fetch_snapshots_one_bad_chunk_does_not_sink_the_rest(monkeypatch):
+    from memescreen import config
+    monkeypatch.setattr(config, "BATCH_SIZE", 2)
+    responses = [httpx.Response(500), httpx.Response(500), httpx.Response(200, json=_load("dexscreener_batch.json"))]
+    respx.get(url__regex=r"https://api\.dexscreener\.com/tokens/v1/solana/.+").mock(
+        side_effect=responses
+    )
+    out = fetch_snapshots(["X" * 44, "Y" * 44,
+                           "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                           "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"])
+    assert "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" in out
+
+
+@respx.mock
+def test_fetch_feed_addresses_solana_only_union():
+    respx.get("https://api.dexscreener.com/token-boosts/top/v1").mock(
+        return_value=httpx.Response(200, json=_load("dexscreener_boosts.json")))
+    respx.get("https://api.dexscreener.com/token-boosts/latest/v1").mock(
+        return_value=httpx.Response(200, json=[]))
+    respx.get("https://api.dexscreener.com/token-profiles/latest/v1").mock(
+        return_value=httpx.Response(200, json=_load("dexscreener_profiles.json")))
+    addrs = fetch_feed_addresses()
+    assert "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" in addrs
+    assert "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD" in addrs
+    assert "0xdeadbeef" not in addrs
+
+
+@respx.mock
+def test_fetch_feed_addresses_tolerates_one_feed_down():
+    respx.get("https://api.dexscreener.com/token-boosts/top/v1").mock(
+        return_value=httpx.Response(500))
+    respx.get("https://api.dexscreener.com/token-boosts/latest/v1").mock(
+        return_value=httpx.Response(200, json=_load("dexscreener_boosts.json")))
+    respx.get("https://api.dexscreener.com/token-profiles/latest/v1").mock(
+        return_value=httpx.Response(200, json=[]))
+    addrs = fetch_feed_addresses()
+    assert "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC" in addrs
