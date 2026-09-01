@@ -56,6 +56,30 @@ def test_clean_spike_is_detected():
         assert hit.first_seen_at == T0 - timedelta(minutes=50)
 
 
+def test_clean_spike_is_detected_baseline_above_floor():
+    # Same shape as test_clean_spike_is_detected, but the quiet baseline
+    # (vol_m5=6000) sits *above* VOL_M5_FLOOR (3000), so max(baseline_m5,
+    # VOL_M5_FLOOR) == baseline_m5: this proves check 1's ratio is driven
+    # by the token's own baseline, not floor-dominated as in every other
+    # fixture in this file (which all use a ~100 baseline, well under the
+    # floor).
+    with Store(":memory:") as s:
+        baseline_vol_m5 = 6000.0
+        latest_vol_m5 = 60000.0
+        overrides = dict(SPIKE_LATEST, vol_m5=latest_vol_m5)
+        _seed(s, "tok", T0, minutes_back=50,
+              quiet=dict(vol_m5=baseline_vol_m5), overrides=overrides)
+
+        # sanity: baseline is genuinely above the floor, so the max() in
+        # the ratio's denominator resolves to baseline_m5, not the floor.
+        assert baseline_vol_m5 > 3000.0  # config.VOL_M5_FLOOR
+
+        hit = detector.detect(s, "tok", T0)
+        assert hit is not None
+        assert hit.spike_ratio == pytest.approx(latest_vol_m5 / baseline_vol_m5, rel=0.05)
+        assert hit.spike_ratio == pytest.approx(10.0, rel=0.05)
+
+
 def test_single_print_blip_rejected_by_accel():
     with Store(":memory:") as s:
         overrides = dict(SPIKE_LATEST, vol_h1=8000.0, vol_h6=45000.0)
@@ -70,6 +94,9 @@ def test_sell_driven_spike_rejected():
     with Store(":memory:") as s:
         overrides = dict(SPIKE_LATEST, buys_m5=6, sells_m5=40)
         _seed(s, "tok", T0, minutes_back=50, overrides=overrides)
+        # sanity: this really is a low-buy-ratio case, not something else
+        buy_ratio = 6 / max(6 + 40, 1)
+        assert buy_ratio == pytest.approx(0.1304, abs=1e-3)
         assert detector.detect(s, "tok", T0) is None
 
 
@@ -78,6 +105,9 @@ def test_draining_liquidity_rejected():
         overrides = dict(SPIKE_LATEST, liquidity_usd=40000.0)
         _seed(s, "tok", T0, minutes_back=50,
               quiet=dict(liquidity_usd=100000.0), overrides=overrides)
+        # sanity: this really is a draining-liquidity case, not something else
+        liq_change = 40000.0 / 100000.0
+        assert liq_change == pytest.approx(0.4, abs=1e-6)
         assert detector.detect(s, "tok", T0) is None
 
 
