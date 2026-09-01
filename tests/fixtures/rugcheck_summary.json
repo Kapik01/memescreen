@@ -1,0 +1,8 @@
+{
+  "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  "tokenType": "",
+  "risks": [{"name": "Low amount of LP Providers", "level": "warn", "score": 20}],
+  "score": 120,
+  "score_normalised": 12,
+  "lpLockedPct": 100.0
+}
