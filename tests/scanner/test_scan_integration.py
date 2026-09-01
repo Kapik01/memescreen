@@ -129,6 +129,11 @@ def _mock_outward_http(mock: respx.MockRouter, now: datetime) -> dict:
             ]}},
         )
     )
+    # pump.fun (filter 9) -- ADDR is wrapped SOL, not a pump.fun launch -> 404
+    # -> fetch_creator_stats returns None -> filter 9 skips (fail-open).
+    routes["pumpfun"] = mock.get(url__startswith="https://frontend-api-v3.pump.fun").mock(
+        return_value=httpx.Response(404, json={"message": "Coin not found"})
+    )
     # Discord webhook POST -- an accidental send is observable. `?wait=true`
     # makes Discord answer 200 + the created-message object.
     routes["discord"] = mock.post(DISCORD_POST_URL).mock(

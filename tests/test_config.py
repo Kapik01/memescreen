@@ -35,6 +35,16 @@ def test_discord_webhook_unset_by_default(monkeypatch):
     assert config.DISCORD_WEBHOOK_URL is None
 
 
+def test_pumpfun_filter_defaults(monkeypatch):
+    for k in ("PUMPFUN_BASE", "PUMPFUN_MAX_COINS", "PUMPFUN_COUNT_LIMIT"):
+        monkeypatch.setenv(k, "")
+    import memescreen.config as config
+    importlib.reload(config)
+    assert config.PUMPFUN_BASE == "https://frontend-api-v3.pump.fun"
+    assert config.PUMPFUN_MAX_COINS == 20
+    assert config.PUMPFUN_COUNT_LIMIT == 50
+
+
 def test_data_dir_default_and_derived_paths(monkeypatch):
     # setenv("") not delenv: reload() re-runs load_dotenv() and would otherwise
     # pick these up from a developer's real .env.

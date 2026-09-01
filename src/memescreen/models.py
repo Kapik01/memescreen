@@ -104,3 +104,11 @@ class AnomalyHit:
     liq_change: float
     first_seen_at: datetime
     anomaly_score: int
+
+
+@dataclass
+class CreatorStats:
+    """pump.fun deployer wallet + how many coins it has launched."""
+    wallet: str
+    coins_created: int
+    capped: bool = False  # True if coins_created hit the API page limit (a floor)
