@@ -85,7 +85,9 @@ def format_message(hit: AnomalyHit, ctx: FilterContext) -> str:
         f"Age       {_age(ctx.age_min)}   ·   {ctx.dex or '?'}",
         "",
         _safety(ctx.risk),
-        f"RugCheck score: {rug or 'n/a'}",
+        # `rug or 'n/a'` would render 0 -- the SAFEST possible score -- as
+        # "unavailable"; only None means unavailable.
+        f"RugCheck score: {rug if rug is not None else 'n/a'}",
         "",
         f"Contract: {hit.address}",
         f"Chart: https://dexscreener.com/solana/{hit.address}",
@@ -118,7 +120,7 @@ def send(hit: AnomalyHit, ctx: FilterContext, store: Store, now: datetime) -> bo
 
     url = _TELEGRAM_API.format(token=config.TELEGRAM_BOT_TOKEN)
     try:
-        request_json(
+        resp = request_json(
             "telegram",
             "POST",
             url,
@@ -129,6 +131,15 @@ def send(hit: AnomalyHit, ctx: FilterContext, store: Store, now: datetime) -> bo
             },
         )
     except ProviderError:
+        print(msg)
+        _record_missed(msg, now)
+        return False
+
+    # Telegram answers "chat not found" / "bot was blocked" with HTTP 200 and
+    # {"ok": false}. Treating that as a send would write alerts_sent and let
+    # the 6h cooldown suppress every retry -- exactly the failure class the
+    # fallback exists for.
+    if not (isinstance(resp, dict) and resp.get("ok") is True):
         print(msg)
         _record_missed(msg, now)
         return False

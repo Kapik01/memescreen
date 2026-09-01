@@ -82,6 +82,21 @@ def test_format_message_no_holder_growth_shows_na():
     assert "holders: n/a" in msg
 
 
+def test_format_message_renders_rugcheck_score_zero_not_na():
+    # 0 is the SAFEST RugCheck score -- it must never read as "unavailable"
+    risk = RiskData(rugcheck_score=0, mint_authority_enabled=False,
+                    freeze_authority_enabled=False, lp_locked_pct=100.0)
+    msg = alerter.format_message(_hit(), _ctx(risk=risk))
+    assert "RugCheck score: 0" in msg
+    assert "RugCheck score: n/a" not in msg
+
+
+def test_format_message_missing_rugcheck_score_shows_na():
+    risk = RiskData(rugcheck_score=None, mint_authority_enabled=False,
+                    freeze_authority_enabled=False, lp_locked_pct=100.0)
+    assert "RugCheck score: n/a" in alerter.format_message(_hit(), _ctx(risk=risk))
+
+
 # --- send ---------------------------------------------------------------
 
 @respx.mock
@@ -99,7 +114,30 @@ def test_send_happy_path_posts_and_records(monkeypatch):
     body = json.loads(route.calls.last.request.content)
     assert body["chat_id"] == "c"
     assert "text" in body and _ADDR in body["text"]
+    assert body["disable_web_page_preview"] is True
     assert store.recent_alert(_ADDR, _NOW + timedelta(minutes=1), config.ALERT_COOLDOWN_H) is True
+
+
+@respx.mock
+def test_send_telegram_200_but_not_ok_falls_back_and_does_not_record(
+    monkeypatch, tmp_path
+):
+    # Telegram reports "chat not found" / "bot blocked" as HTTP 200 + ok:false.
+    # Recording that as a send would let the cooldown suppress every retry.
+    _configure(monkeypatch)
+    missed = tmp_path / "missed_alerts.log"
+    monkeypatch.setattr(alerter, "MISSED_LOG", str(missed))
+    route = respx.post(_TG_URL).mock(
+        return_value=httpx.Response(200, json={"ok": False, "description": "chat not found"})
+    )
+    store = Store()
+
+    result = alerter.send(_hit(), _ctx(), store, _NOW)
+
+    assert result is False
+    assert route.call_count == 1
+    assert store.recent_alert(_ADDR, _NOW + timedelta(minutes=1), config.ALERT_COOLDOWN_H) is False
+    assert _ADDR in missed.read_text(encoding="utf-8")
 
 
 @respx.mock
