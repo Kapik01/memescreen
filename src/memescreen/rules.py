@@ -6,6 +6,9 @@ from memescreen.models import Flag, TokenReport
 
 _AUTHORITY_LP_CHECKS = {"Mint authority", "Freeze authority", "LP locked"}
 
+# A check we could not run at all: no evidence, so TRADE must never be reached.
+_CRITICAL_CHECKS = {"Liquidity", "LP locked", "Mint authority", "Freeze authority"}
+
 
 def _liquidity(report: TokenReport) -> Flag:
     v = report.market.liquidity_usd if report.market else None
@@ -84,7 +87,10 @@ def _rugcheck(report: TokenReport) -> Flag:
     if not report.risk:
         return Flag("unknown", "RugCheck risks", "no RugCheck data")
     flags = report.risk.risk_flags
+    danger = report.risk.danger_flags
     score = report.risk.rugcheck_score
+    if danger:
+        return Flag("red", "RugCheck risks", ", ".join(danger[:3]))
     if not flags:
         return Flag("green", "RugCheck risks", "none")
     joined = ", ".join(flags[:3])
@@ -115,9 +121,12 @@ def evaluate(report: TokenReport) -> None:
     caution_yellow = any(
         f.level == "yellow" and f.check in _AUTHORITY_LP_CHECKS for f in flags
     )
+    # Missing data on a safety-critical check means we never saw the evidence
+    # TRADE would be claiming; degrade to CAUTION regardless of score.
+    blind = any(f.level == "unknown" and f.check in _CRITICAL_CHECKS for f in flags)
     if has_red or score < config.VERDICT_AVOID_MAX:
         verdict = "AVOID"
-    elif score < config.VERDICT_TRADE_MIN or caution_yellow:
+    elif score < config.VERDICT_TRADE_MIN or caution_yellow or blind:
         verdict = "CAUTION"
     else:
         verdict = "TRADE"

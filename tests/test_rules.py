@@ -110,6 +110,35 @@ def test_rugcheck_flag_with_high_score_is_red():
     assert _flag_levels(r)["RugCheck risks"] == "red"
 
 
+def test_danger_level_rugcheck_flag_is_red_even_with_low_score():
+    r = _report(_market(), _risk(risk_flags=["Rugged"], danger_flags=["Rugged"],
+                                rugcheck_score=45),
+                HolderData(1000, 20.0, 30.0, None))
+    evaluate(r)
+    assert _flag_levels(r)["RugCheck risks"] == "red"
+    assert r.verdict == "AVOID"
+
+
+def test_dexscreener_down_cannot_trade():
+    # No market data at all: Liquidity is unknown, so TRADE is not available
+    # even though everything we could see is clean.
+    r = _report(None, _risk(), HolderData(1000, 20.0, 30.0, None))
+    evaluate(r)
+    levels = _flag_levels(r)
+    assert levels["Liquidity"] == "unknown"
+    assert levels["Pair age"] == "unknown"
+    assert r.verdict == "CAUTION"
+
+
+def test_rugcheck_down_cannot_trade():
+    r = _report(_market(), None, HolderData(1000, 20.0, 30.0, None))
+    evaluate(r)
+    levels = _flag_levels(r)
+    assert levels["LP locked"] == "unknown"
+    assert levels["Mint authority"] == "unknown"
+    assert r.verdict == "CAUTION"
+
+
 def test_score_clamped_to_zero_floor():
     r = _report(
         _market(liquidity_usd=100.0, pair_created_at=NOW - timedelta(minutes=1)),
