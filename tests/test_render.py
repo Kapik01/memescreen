@@ -65,3 +65,11 @@ def test_render_handles_no_market_at_all():
     out = render_report(r)
     assert "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm" in out
     assert "CAUTION" in out
+
+
+def test_render_keeps_zero_price_line():
+    r = _full_report()
+    r.market.price_usd = 0.0
+    out = render_report(r)
+    assert "Price" in out
+    assert "$0" in out

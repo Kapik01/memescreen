@@ -44,12 +44,12 @@ def render_report(report: TokenReport) -> str:
     console.print("")
 
     market_lines = [
-        ("Price", f"${m.price_usd:.8f}".rstrip("0") if m and m.price_usd else None),
-        ("Liquidity", _fmt_usd(m.liquidity_usd) if m else None),
-        ("24h volume", _fmt_usd(m.volume_24h_usd) if m else None),
-        ("Market cap", _fmt_usd(m.market_cap_usd) if m else None),
+        ("Price", f"${m.price_usd:.8f}".rstrip("0") if m and m.price_usd is not None else None),
+        ("Liquidity", _fmt_usd(m.liquidity_usd) if m and m.liquidity_usd is not None else None),
+        ("24h volume", _fmt_usd(m.volume_24h_usd) if m and m.volume_24h_usd is not None else None),
+        ("Market cap", _fmt_usd(m.market_cap_usd) if m and m.market_cap_usd is not None else None),
         ("Age", _age(report)),
-        ("DEX", m.dex if m else None),
+        ("DEX", m.dex if m and m.dex is not None else None),
     ]
     printed_any = False
     for label, value in market_lines:
