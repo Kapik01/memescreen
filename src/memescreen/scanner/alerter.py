@@ -1,11 +1,11 @@
-"""Turn a gate-surviving `AnomalyHit` into a Telegram alert (spec §7).
+"""Turn a gate-surviving `AnomalyHit` into a Discord alert (spec §7).
 
 `send()` is the single entry point. It dedupes against `alerts_sent`
-(`store.recent_alert`), formats a plain-text message, and delivers it via the
-Telegram Bot API. When Telegram is unconfigured or the API call fails, it falls
-back to a terminal print plus an appended line in `MISSED_LOG` and does *not*
-write `alerts_sent` -- so a Telegram outage never both loses the signal and
-suppresses a later retry.
+(`store.recent_alert`), formats a plain-text message, and delivers it by POSTing
+to a Discord channel webhook. When the webhook is unconfigured or the request
+fails, it falls back to a terminal print plus an appended line in `MISSED_LOG`
+and does *not* write `alerts_sent` -- so an outage never both loses the signal
+and suppresses a later retry.
 """
 from __future__ import annotations
 
@@ -18,14 +18,15 @@ from memescreen.providers.base import ProviderError, request_json
 from memescreen.scanner.filters import FilterContext
 from memescreen.scanner.store import Store
 
-MISSED_LOG = "data/missed_alerts.log"
+MISSED_LOG = config.MISSED_LOG_PATH
 
-_TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
+# Discord truncates `content` at 2000 chars; leave headroom for the code fence.
+_CONTENT_MAX = 1900
 
 
-def telegram_configured() -> bool:
-    """True only when both Telegram secrets are set (read at call time)."""
-    return bool(config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID)
+def discord_configured() -> bool:
+    """True only when the Discord webhook URL is set (read at call time)."""
+    return bool(config.DISCORD_WEBHOOK_URL)
 
 
 # --- formatting helpers -------------------------------------------------
@@ -106,6 +107,14 @@ def _record_missed(msg: str, now: datetime) -> None:
         fh.write(msg + "\n")
 
 
+def _webhook_url() -> str:
+    """Webhook with `?wait=true` so Discord answers 200 + a JSON body on
+    success instead of a bodyless 204 (which `request_json` would reject)."""
+    url = config.DISCORD_WEBHOOK_URL or ""
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}wait=true"
+
+
 def send(hit: AnomalyHit, ctx: FilterContext, store: Store, now: datetime) -> bool:
     """Format and deliver the alert. Returns True only on a confirmed send."""
     if store.recent_alert(hit.address, now, config.ALERT_COOLDOWN_H):
@@ -113,33 +122,29 @@ def send(hit: AnomalyHit, ctx: FilterContext, store: Store, now: datetime) -> bo
 
     msg = format_message(hit, ctx)
 
-    if not telegram_configured():
+    if not discord_configured():
         print(msg)
         _record_missed(msg, now)
         return False
 
-    url = _TELEGRAM_API.format(token=config.TELEGRAM_BOT_TOKEN)
+    content = "```\n" + msg[:_CONTENT_MAX] + "\n```"
     try:
         resp = request_json(
-            "telegram",
+            "discord",
             "POST",
-            url,
-            json_body={
-                "chat_id": config.TELEGRAM_CHAT_ID,
-                "text": msg,
-                "disable_web_page_preview": True,
-            },
+            _webhook_url(),
+            json_body={"content": content},
         )
     except ProviderError:
+        # Bad/deleted webhook -> 4xx, exhausted retries -> ProviderError.
         print(msg)
         _record_missed(msg, now)
         return False
 
-    # Telegram answers "chat not found" / "bot was blocked" with HTTP 200 and
-    # {"ok": false}. Treating that as a send would write alerts_sent and let
-    # the 6h cooldown suppress every retry -- exactly the failure class the
-    # fallback exists for.
-    if not (isinstance(resp, dict) and resp.get("ok") is True):
+    # With `?wait=true` a success is 200 + the created-message object (a dict
+    # with an "id"). Anything else -- a proxy returning a list, an empty body
+    # slipping through -- is not a confirmed delivery.
+    if not (isinstance(resp, dict) and resp.get("id")):
         print(msg)
         _record_missed(msg, now)
         return False

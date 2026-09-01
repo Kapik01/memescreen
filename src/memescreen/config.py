@@ -28,8 +28,10 @@ def _opt_str(key: str) -> str | None:
 # --- secrets (never logged) ---
 BIRDEYE_API_KEY: str | None = _opt_str("BIRDEYE_API_KEY")
 HELIUS_API_KEY: str | None = _opt_str("HELIUS_API_KEY")
-TELEGRAM_BOT_TOKEN: str | None = _opt_str("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID: str | None = _opt_str("TELEGRAM_CHAT_ID")
+DISCORD_WEBHOOK_URL: str | None = _opt_str("DISCORD_WEBHOOK_URL")
+
+# --- data directory (Railway: set DATA_DIR=/data and mount a volume there) ---
+DATA_DIR: str = env("DATA_DIR", "data", str)
 
 # --- API bases ---
 DEXSCREENER_BASE: str = env("DEXSCREENER_BASE", "https://api.dexscreener.com", str)
@@ -95,4 +97,11 @@ ALERT_COOLDOWN_H: float = env("ALERT_COOLDOWN_H", 6.0, float)
 HISTORY_RETENTION_H: float = env("HISTORY_RETENTION_H", 3.0, float)
 RISK_CACHE_TTL_H: float = env("RISK_CACHE_TTL_H", 6.0, float)
 BATCH_SIZE: int = env("BATCH_SIZE", 30, int)
-DB_PATH: str = env("DB_PATH", "data/memescreen.db", str)
+
+# Paths default to <DATA_DIR>/... but each stays individually overridable.
+# Forward slashes on purpose -- SQLite and open() accept them on every platform
+# and Railway (the deploy target) is Linux.
+_DATA_DIR = DATA_DIR.rstrip("/\\")
+DB_PATH: str = env("DB_PATH", f"{_DATA_DIR}/memescreen.db", str)
+LOG_PATH: str = env("LOG_PATH", f"{_DATA_DIR}/memescreen.log", str)
+MISSED_LOG_PATH: str = env("MISSED_LOG_PATH", f"{_DATA_DIR}/missed_alerts.log", str)

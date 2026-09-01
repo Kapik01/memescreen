@@ -40,13 +40,16 @@ draining liquidity, and fresh — then only if the token passes a strict safety
 gate (LP locked ≥90%, mint & freeze renounced, ≥$20k liquidity, ≥60 min old,
 holder count rising alongside volume, no RugCheck "danger").
 
-Alerts go to Telegram when `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set
-in `.env`; otherwise the scanner prints them and logs to `data/missed_alerts.log`.
+Alerts go to a Discord channel when `DISCORD_WEBHOOK_URL` is set in `.env`
+(Channel → Edit → Integrations → Webhooks → New Webhook → Copy Webhook URL);
+otherwise the scanner prints them and appends to `<DATA_DIR>/missed_alerts.log`.
 Needs `BIRDEYE_API_KEY` for the holder-growth check — without it, every hit
 fails that check (fail-closed) and nothing alerts.
 
-State lives in `data/memescreen.db` (SQLite). Stop with Ctrl+C — it finishes
-the current cycle, prunes, and exits cleanly.
+State lives in `<DATA_DIR>/memescreen.db` (SQLite); `DATA_DIR` defaults to
+`data`. Stop with Ctrl+C — it finishes the current cycle, prunes, and exits
+cleanly. To run it 24/7 without your machine on, see `docs/DEPLOY.md`
+(Railway + Discord).
 
 **This is not a money printer.** Most Solana volume spikes are manufactured to
 trip exactly this kind of screener. The scanner makes you faster and better-

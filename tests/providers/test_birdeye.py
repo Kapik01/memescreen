@@ -17,10 +17,9 @@ def _load(name):
 
 
 def _reload_with_key(monkeypatch, key):
-    if key is None:
-        monkeypatch.delenv("BIRDEYE_API_KEY", raising=False)
-    else:
-        monkeypatch.setenv("BIRDEYE_API_KEY", key)
+    # "" not delenv: reload() re-runs load_dotenv(), which would otherwise
+    # repopulate the key from a developer's real .env file.
+    monkeypatch.setenv("BIRDEYE_API_KEY", key or "")
     import memescreen.config as config
     importlib.reload(config)
     import memescreen.providers.birdeye as birdeye

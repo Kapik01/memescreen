@@ -13,7 +13,7 @@ capabilities on one shared data layer:
    Deterministic flags + a 0–100 score + a `TRADE` / `CAUTION` / `AVOID`
    verdict. No LLM.
 2. **`scan`** — an always-on poller that watches a wide universe of Solana
-   tokens, learns each token's own normal trading rate, and sends a Telegram
+   tokens, learns each token's own normal trading rate, and sends a Discord
    alert when a token's activity spikes out of nowhere *and* passes strict
    safety/quality filters.
 
@@ -78,7 +78,7 @@ memescreen/
       poller.py             # the poll loop: batch-refresh, write history
       detector.py           # history + stats -> AnomalyHit
       filters.py            # strict safety/quality gate
-      alerter.py            # Telegram send + dedupe
+      alerter.py            # Discord webhook send + dedupe
       run.py                # `scan` entry: wires the funnel together
   tests/
     test_rules.py
@@ -119,7 +119,7 @@ Cast wide with cheap calls; spend expensive calls only on survivors.
 4. **Filter** (only on hits, typically 0–5/cycle): strict gate (§6). Uses data
    already in hand + one cached RugCheck call + one Birdeye holder call per
    *new* hit.
-5. **Alert** (only on filter survivors, deduped): send Telegram message, write
+5. **Alert** (only on filter survivors, deduped): send Discord message, write
    `alerts_sent` row after confirmed delivery.
 
 ## 4. Data model (`models.py`)
@@ -279,8 +279,18 @@ failing reason, as a tuning feedback loop.
 
 ## 7. Alerting (`alerter.py`)
 
-Telegram Bot API: `POST https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/sendMessage`
-to `TELEGRAM_CHAT_ID`. Both from `.env`.
+> **Deviation (2026-09-01):** the alert channel was changed from the Telegram
+> Bot API to a **Discord channel webhook**. `POST <DISCORD_WEBHOOK_URL>?wait=true`
+> with `{"content": "```\n<message>\n```"}`; the URL is the only secret, from
+> `.env`. `?wait=true` makes Discord answer `200` + the created-message object
+> (a dict with an `id`) instead of a bodyless `204`, so the same
+> confirmed-send / fallback logic below applies unchanged — a delivery is
+> "confirmed" when the response is a dict carrying `id`. The message body,
+> dedupe, `alerts_sent`-on-confirmed-send, and the `missed_alerts.log` fallback
+> are all as originally specified.
+
+Original design (Telegram Bot API: `POST https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/sendMessage`
+to `TELEGRAM_CHAT_ID`, both from `.env`):
 
 **Message format:**
 
@@ -302,13 +312,14 @@ Chart:    https://dexscreener.com/solana/<address>
 Run: screen <address>  for full report
 ```
 
-**Delivery guarantees:** on send failure, retry once, then fall back to a
-terminal print + a line in `missed_alerts.log`. `alerts_sent` is written only
-after a confirmed 200 response, so a Telegram outage never both loses the
-signal *and* suppresses a later retry.
+**Delivery guarantees:** on send failure, retry once (5xx/timeout only), then
+fall back to a terminal print + a line in `<DATA_DIR>/missed_alerts.log`.
+`alerts_sent` is written only after a confirmed send (Discord: `200` + a body
+with `id`), so an outage never both loses the signal *and* suppresses a later
+retry.
 
-**Startup guard:** if `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` are missing,
-`scan` warns and runs in terminal-only mode instead of crashing.
+**Startup guard:** if `DISCORD_WEBHOOK_URL` is missing, `scan` warns and runs
+in terminal-only mode instead of crashing.
 
 ## 8. Providers
 
@@ -359,7 +370,7 @@ All values are module-level constants with `.env` overrides. Defaults:
 
 ```
 # secrets (.env only, no default)
-BIRDEYE_API_KEY, HELIUS_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+BIRDEYE_API_KEY, HELIUS_API_KEY, DISCORD_WEBHOOK_URL
 
 # detection
 SPIKE_RATIO_MIN=8
@@ -433,7 +444,7 @@ No live API calls in the suite.
 | `test_filters.py` | Table of `RiskData` / `HolderData` combos → pass/fail + reason. Includes fail-closed on missing Birdeye data. |
 | `test_rules.py` | `screen` scoring & verdict at threshold boundaries; missing-data penalties. |
 | `providers/test_*.py` | Parse a committed real JSON fixture per endpoint → assert the mapping to dataclasses. Catches API schema drift. |
-| `test_alerter.py` | Mocked Telegram endpoint (`respx`); assert message payload and that `alerts_sent` is written only on confirmed 200; retry + fallback path. |
+| `test_alerter.py` | Mocked Discord webhook (`respx`); assert message payload and that `alerts_sent` is written only on a confirmed send; retry + fallback path. |
 
 ## 15. Dependencies
 

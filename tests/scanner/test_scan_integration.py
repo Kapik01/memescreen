@@ -2,7 +2,7 @@
 
 These tests drive the REAL `run.cycle` (seed is skipped; poll -> detect ->
 filter -> alert all run for real) against a REAL `Store`. The ONLY thing faked
-is outward HTTP: every DexScreener / RugCheck / Birdeye / Telegram URL is
+is outward HTTP: every DexScreener / RugCheck / Birdeye / Discord URL is
 mocked with `respx`. NOTHING in the scanner is monkeypatched -- no module, no
 `Store` method: the poll writes `pair_created_at` / `dex` / `symbol` to
 `token_history` for real, so `Store.latest_snapshot()` hands the filter gate a
@@ -13,8 +13,8 @@ snapshot with a real pair age and the whole funnel runs unaided.
   closed on "no holder baseline yet".
 * `test_first_hit_records_holder_baseline_and_fails_closed` -- same path,
   asserting the RugCheck/Birdeye consultation and the captured baseline.
-* `test_hit_with_holder_baseline_sends_telegram_alert` -- with a baseline
-  pre-seeded, the gate passes and a Telegram alert goes out.
+* `test_hit_with_holder_baseline_sends_discord_alert` -- with a baseline
+  pre-seeded, the gate passes and a Discord alert goes out.
 """
 from __future__ import annotations
 
@@ -36,7 +36,8 @@ ADDR = "So11111111111111111111111111111111111111112"
 DEX_BASE = "https://api.dexscreener.com"
 RUG_BASE = "https://api.rugcheck.xyz"
 BIRDEYE_BASE = "https://public-api.birdeye.so"
-TELEGRAM_URL = "https://api.telegram.org/bott/sendMessage"
+DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1/tok"
+DISCORD_POST_URL = f"{DISCORD_WEBHOOK}?wait=true"
 
 # 60 flat, quiet 1-min history rows ending ~1 min before `now`. That is well
 # past DETECT_MIN_HISTORY_MIN (45) and fills the detector's 45..10-min-back
@@ -128,9 +129,10 @@ def _mock_outward_http(mock: respx.MockRouter, now: datetime) -> dict:
             ]}},
         )
     )
-    # Telegram sendMessage -- an accidental send is observable.
-    routes["telegram"] = mock.route(method="POST", url=TELEGRAM_URL).mock(
-        return_value=httpx.Response(200, json={"ok": True})
+    # Discord webhook POST -- an accidental send is observable. `?wait=true`
+    # makes Discord answer 200 + the created-message object.
+    routes["discord"] = mock.post(DISCORD_POST_URL).mock(
+        return_value=httpx.Response(200, json={"id": "42", "channel_id": "1"})
     )
     return routes
 
@@ -138,8 +140,7 @@ def _mock_outward_http(mock: respx.MockRouter, now: datetime) -> dict:
 @pytest.fixture
 def secrets(monkeypatch):
     monkeypatch.setattr(config, "BIRDEYE_API_KEY", "k")
-    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "t")
-    monkeypatch.setattr(config, "TELEGRAM_CHAT_ID", "c")
+    monkeypatch.setattr(config, "DISCORD_WEBHOOK_URL", DISCORD_WEBHOOK)
 
 
 # --------------------------------------------------------------------------
@@ -167,7 +168,7 @@ def test_wired_path_polls_detects_and_fails_closed(secrets):
 
     # the gate fails closed and NOTHING is sent
     assert row["passed_gate"] == 0
-    assert routes["telegram"].call_count == 0
+    assert routes["discord"].call_count == 0
 
     # the age check now clears on the persisted pair_created_at, so RugCheck
     # and Birdeye ARE consulted and the stop is the holder baseline
@@ -195,7 +196,7 @@ def test_first_hit_records_holder_baseline_and_fails_closed(secrets):
         "SELECT passed_gate, fail_reason FROM hits WHERE address=?", (ADDR,)
     ).fetchone()
     assert (row["passed_gate"], row["fail_reason"]) == (0, "no holder baseline yet")
-    assert routes["telegram"].call_count == 0
+    assert routes["discord"].call_count == 0
 
     # RugCheck + Birdeye were consulted, and the baseline is now captured
     assert routes["rug"].call_count == 1
@@ -207,9 +208,9 @@ def test_first_hit_records_holder_baseline_and_fails_closed(secrets):
 
 # --------------------------------------------------------------------------
 # Scenario B -- with a holder baseline pre-seeded, the same wired cycle passes
-# the gate and fires a Telegram alert.
+# the gate and fires a Discord alert.
 # --------------------------------------------------------------------------
-def test_hit_with_holder_baseline_sends_telegram_alert(secrets):
+def test_hit_with_holder_baseline_sends_discord_alert(secrets):
     store = Store(":memory:")
     now = datetime.now(UTC)
     _seed_quiet_history(store, now)
@@ -223,11 +224,10 @@ def test_hit_with_holder_baseline_sends_telegram_alert(secrets):
         routes = _mock_outward_http(mock, now)
         run.cycle(store, RiskCache(), cycle_now, do_seed=False)
 
-    # exactly one Telegram alert, addressed and carrying the token address
-    assert routes["telegram"].call_count == 1
-    body = json.loads(routes["telegram"].calls.last.request.content)
-    assert body["chat_id"] == "c"
-    assert ADDR in body["text"]
+    # exactly one Discord webhook POST, carrying the token address in `content`
+    assert routes["discord"].call_count == 1
+    body = json.loads(routes["discord"].calls.last.request.content)
+    assert ADDR in body["content"]
 
     # the gate passed and the alert is recorded (cooldown now active)
     row = store._conn.execute(

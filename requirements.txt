@@ -1,0 +1,3 @@
+# Deploy signal for Nixpacks/Railway: install this project (which pulls its
+# own deps from pyproject.toml). Local dev uses `pip install -e ".[dev]"`.
+.
