@@ -1,0 +1,23 @@
+{
+  "mint": "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+  "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  "mintAuthority": null,
+  "freezeAuthority": null,
+  "token": {"mintAuthority": null, "freezeAuthority": null, "decimals": 6},
+  "tokenMeta": {"name": "dogwifhat", "symbol": "WIF"},
+  "topHolders": [
+    {"address": "Hxxxaaa", "pct": 4.2, "insider": false},
+    {"address": "Hxxxbbb", "pct": 3.1, "insider": false},
+    {"address": "Hxxxccc", "pct": 2.0, "insider": false}
+  ],
+  "risks": [
+    {"name": "Rugged", "level": "danger", "score": 40000},
+    {"name": "Low amount of LP Providers", "level": "warn", "score": 20}
+  ],
+  "markets": [
+    {"lp": {"lpLockedPct": 100.0, "lpLocked": 12345.0}}
+  ],
+  "score": 40020,
+  "score_normalised": 45,
+  "rugged": true
+}
