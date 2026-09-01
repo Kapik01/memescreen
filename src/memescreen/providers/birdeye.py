@@ -69,6 +69,10 @@ def _feed_call(path: str, params: dict, list_key: str) -> set[str]:
     except ProviderError as exc:
         _log.warning("birdeye feed %s failed: %s", path, exc.reason)
         return set()
+    # A list or null body would make payload.get raise AttributeError, which is
+    # not a ProviderError and would take down the whole seed cycle.
+    if not isinstance(payload, dict):
+        return set()
     items = (payload.get("data") or {}).get(list_key) or []
     return {it["address"] for it in items if isinstance(it, dict) and it.get("address")}
 

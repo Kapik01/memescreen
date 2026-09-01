@@ -20,8 +20,6 @@ Prints market data, safety flags, a 0–100 score, and a TRADE / CAUTION / AVOID
 verdict. Works with no API keys (DexScreener + RugCheck); adding Birdeye/Helius
 keys enriches holder data and metadata.
 
-`memescreen scan` — continuous volume-spike scanner — arrives in Plan 2.
-
 ### Known caveat: unverified provider field paths
 
 The Birdeye and Helius JSON field paths — `data.holder`, `data.items[].percentage`

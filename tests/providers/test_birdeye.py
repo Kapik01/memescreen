@@ -112,6 +112,17 @@ def test_feed_addresses_union_of_trending_and_new_listing(monkeypatch):
     assert "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF" in addrs
 
 
+@respx.mock
+def test_feed_addresses_tolerates_a_non_dict_body(monkeypatch):
+    # A list (or null) body must not raise AttributeError out of _feed_call.
+    birdeye = _reload_with_key(monkeypatch, "testkey")
+    respx.get(url__regex=r".*/defi/token_trending.*").mock(
+        return_value=httpx.Response(200, json=[]))
+    respx.get(url__regex=r".*/defi/v2/tokens/new_listing.*").mock(
+        return_value=httpx.Response(200, json=[]))
+    assert birdeye.fetch_feed_addresses() == set()
+
+
 def test_feed_addresses_empty_without_key(monkeypatch):
     birdeye = _reload_with_key(monkeypatch, None)
     assert birdeye.fetch_feed_addresses() == set()
