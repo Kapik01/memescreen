@@ -36,10 +36,10 @@ def test_discord_webhook_unset_by_default(monkeypatch):
 
 
 def test_data_dir_default_and_derived_paths(monkeypatch):
-    monkeypatch.delenv("DATA_DIR", raising=False)
-    monkeypatch.delenv("DB_PATH", raising=False)
-    monkeypatch.delenv("LOG_PATH", raising=False)
-    monkeypatch.delenv("MISSED_LOG_PATH", raising=False)
+    # setenv("") not delenv: reload() re-runs load_dotenv() and would otherwise
+    # pick these up from a developer's real .env.
+    for k in ("DATA_DIR", "DB_PATH", "LOG_PATH", "MISSED_LOG_PATH"):
+        monkeypatch.setenv(k, "")
     import memescreen.config as config
     importlib.reload(config)
     assert config.DATA_DIR == "data"

@@ -25,7 +25,9 @@ Railway deploys from a Git repo.
 
 1. On https://github.com/new create an **empty private** repo named `memescreen`
    (no README, no .gitignore — the repo already has both).
-2. From `C:\Users\alexa\memescreen`:
+2. Make sure the Discord change is on `main` first
+   (`git checkout main && git merge feature/discord-railway` if it isn't yet),
+   then from `C:\Users\alexa\memescreen`:
 
    ```bash
    git remote add origin https://github.com/<your-username>/memescreen.git
@@ -40,7 +42,14 @@ Railway deploys from a Git repo.
 1. https://railway.app → sign in with GitHub.
 2. **New Project** → **Deploy from GitHub repo** → pick `memescreen`.
 3. Railway reads `railway.json` and starts building. The first deploy will
-   probably **fail or idle** until you finish steps 4–5 — that's expected.
+   probably **idle or fail** until you finish steps 4–5 (no env vars yet) —
+   that's expected.
+
+   **If the deploy logs show `ModuleNotFoundError: No module named 'memescreen'`**,
+   the build didn't install the package. The repo ships a `requirements.txt`
+   (one line: `.`) that tells Nixpacks to `pip install` the project, which
+   normally fixes this. If it persists, in the service **Settings → Build**
+   set a custom build command: `pip install .`
 
 ## 4. Add a persistent volume (so history survives restarts)
 
@@ -84,17 +93,26 @@ watched a real run): `SPIKE_RATIO_MIN`, `MIN_LIQUIDITY`, `MIN_AGE_MIN`,
 
 ## 7. After a day — tune
 
-The `hits` table is the tuning instrument. From the Railway service:
+The `hits` table is the tuning instrument. It lives on the **volume**, so you
+have to look at it from inside the running deployment — `railway run` won't
+work (it runs on *your* machine with Railway's env vars, not in the container,
+and the volume isn't mounted there).
+
+**Option A — dashboard shell.** Service → the running deployment → the
+**Shell** / **terminal** tab, then:
 
 ```bash
-railway run python -c "import sqlite3; c=sqlite3.connect('/data/memescreen.db'); \
-  [print(r) for r in c.execute('SELECT fail_reason, COUNT(*) FROM hits GROUP BY fail_reason ORDER BY 2 DESC')]"
+python -c "import sqlite3; c=sqlite3.connect('/data/memescreen.db'); \
+[print(r) for r in c.execute('SELECT fail_reason, COUNT(*) FROM hits GROUP BY fail_reason ORDER BY 2 DESC')]"
 ```
 
-(`railway run` executes in the deployed environment with the volume attached.)
-If everything reads `"age <60m"` or `"holders flat"`, loosen `MIN_AGE_MIN` /
-`HOLDER_GROWTH_*` a notch. If the table is empty, `SPIKE_RATIO_MIN` is too high
-for current market conditions — drop it toward 5–6.
+**Option B — `railway ssh`** (Railway CLI, from your machine): `railway ssh`
+into the service, then run the same command.
+
+Reading it: if everything is `"age <60m"` or `"holders flat"`, loosen
+`MIN_AGE_MIN` / `HOLDER_GROWTH_*` a notch (set them as Railway Variables). If
+the table is empty after a full day, `SPIKE_RATIO_MIN` is too high for current
+conditions — drop it toward 5–6.
 
 ---
 
