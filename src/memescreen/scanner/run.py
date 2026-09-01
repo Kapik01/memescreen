@@ -20,7 +20,7 @@ from memescreen.scanner.riskcache import RiskCache
 from memescreen.scanner.store import Store
 
 _LOGGER_NAME = "memescreen.scanner"
-_LOG_PATH = os.path.join("data", "memescreen.log")
+_LOG_PATH = config.LOG_PATH
 _LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
 
 # Set by the SIGINT handler; checked every <=1s slice by the main loop.
@@ -126,8 +126,11 @@ def main(argv: list[str] | None = None) -> int:
     log.info("db: %s", os.path.abspath(config.DB_PATH))
     store = Store(config.DB_PATH)
     risk_cache = RiskCache()
-    if not alerter.telegram_configured():
-        log.warning("Telegram not configured -- running in terminal-only mode")
+    if not alerter.discord_configured():
+        log.warning(
+            "Discord webhook not configured -- alerts will print and append to %s",
+            config.MISSED_LOG_PATH,
+        )
 
     log.info("scan started")
     cycle(store, risk_cache, datetime.now(UTC), do_seed=True)

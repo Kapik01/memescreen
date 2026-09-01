@@ -2,7 +2,9 @@ import importlib
 
 
 def test_defaults_present(monkeypatch):
-    monkeypatch.delenv("BIRDEYE_API_KEY", raising=False)
+    # setenv("") not delenv: reload() re-runs load_dotenv(), which would
+    # otherwise repopulate the key from a developer's real .env file.
+    monkeypatch.setenv("BIRDEYE_API_KEY", "")
     import memescreen.config as config
     importlib.reload(config)
     assert config.HTTP_TIMEOUT_SEC == 10.0
@@ -24,6 +26,37 @@ def test_env_override(monkeypatch):
 def test_env_helper_casts():
     import memescreen.config as config
     assert config.env("NOPE_MISSING", 3, int) == 3
+
+
+def test_discord_webhook_unset_by_default(monkeypatch):
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
+    import memescreen.config as config
+    importlib.reload(config)
+    assert config.DISCORD_WEBHOOK_URL is None
+
+
+def test_data_dir_default_and_derived_paths(monkeypatch):
+    monkeypatch.delenv("DATA_DIR", raising=False)
+    monkeypatch.delenv("DB_PATH", raising=False)
+    monkeypatch.delenv("LOG_PATH", raising=False)
+    monkeypatch.delenv("MISSED_LOG_PATH", raising=False)
+    import memescreen.config as config
+    importlib.reload(config)
+    assert config.DATA_DIR == "data"
+    assert config.DB_PATH == "data/memescreen.db"
+    assert config.LOG_PATH == "data/memescreen.log"
+    assert config.MISSED_LOG_PATH == "data/missed_alerts.log"
+
+
+def test_data_dir_override_flows_into_paths(monkeypatch):
+    monkeypatch.setenv("DATA_DIR", "/data")
+    for k in ("DB_PATH", "LOG_PATH", "MISSED_LOG_PATH"):
+        monkeypatch.delenv(k, raising=False)
+    import memescreen.config as config
+    importlib.reload(config)
+    assert config.DB_PATH == "/data/memescreen.db"
+    assert config.LOG_PATH == "/data/memescreen.log"
+    assert config.MISSED_LOG_PATH == "/data/missed_alerts.log"
 
 
 def test_scanner_defaults_present(monkeypatch):

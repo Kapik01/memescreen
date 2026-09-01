@@ -1,5 +1,5 @@
 """Strict safety/quality gate (spec §6): the eight-filter chain that decides
-whether a detected `AnomalyHit` becomes a Telegram alert.
+whether a detected `AnomalyHit` becomes a Discord alert.
 
 Fail-closed by design: any filter whose safety data could not be obtained
 (risk cache miss, a Birdeye error, a missing holder baseline) is treated as
