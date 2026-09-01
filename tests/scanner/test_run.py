@@ -81,7 +81,7 @@ def test_advance_at_exactly_now_returns_now():
     assert run._advance(mark=940.0, interval=60.0, now=1000.0) == 1000.0
 
 
-def test_hit_is_filtered_and_alerted(monkeypatch):
+def test_hit_is_filtered_and_alerted(monkeypatch, caplog):
     hit = AnomalyHit(
         address="m", detected_at=T0, spike_ratio=20.0, accel=5.0, buy_ratio=0.9,
         buys_m5=50, vol_m5=9000.0, vol_h1=60000.0, liq_now=60000.0,
@@ -114,6 +114,9 @@ def test_hit_is_filtered_and_alerted(monkeypatch):
     monkeypatch.setattr(run.alerter, "send", _spy)
 
     with Store(":memory:") as s:
-        run.cycle(s, RiskCache(fetch=lambda a: None), T0, do_seed=False)
+        with caplog.at_level(logging.INFO, logger="memescreen.scanner"):
+            run.cycle(s, RiskCache(fetch=lambda a: None), T0, do_seed=False)
 
     assert calls == [("m", "AAA")]
+    assert "detected 1 anomaly hit" in caplog.text
+    assert "gate: m" in caplog.text and "PASSED" in caplog.text
