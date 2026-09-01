@@ -67,6 +67,11 @@ def test_render_handles_no_market_at_all():
     assert "CAUTION" in out
 
 
+def test_render_report_does_not_write_to_stdout(capsys):
+    render_report(_full_report())
+    assert capsys.readouterr().out == ""
+
+
 def test_render_keeps_zero_price_line():
     r = _full_report()
     r.market.price_usd = 0.0

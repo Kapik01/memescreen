@@ -28,6 +28,14 @@ def test_screen_happy_path(monkeypatch, capsys):
     assert VALID in out
 
 
+def test_screen_prints_report_exactly_once(monkeypatch, capsys):
+    monkeypatch.setattr(cli.orchestrator, "screen", lambda a: _fake_report(a))
+    rc = cli.main(["screen", VALID])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert out.count("VERDICT") == 1
+
+
 def test_screen_rejects_bad_address(capsys):
     rc = cli.main(["screen", "not-an-address!!!"])
     err = capsys.readouterr().err

@@ -2,6 +2,8 @@
 string so it is trivially testable and pipe-friendly."""
 from __future__ import annotations
 
+import io
+
 from rich.console import Console
 from rich.table import Table
 
@@ -26,7 +28,7 @@ def _age(report: TokenReport) -> str | None:
 
 
 def render_report(report: TokenReport) -> str:
-    console = Console(record=True, width=100)
+    console = Console(record=True, width=100, file=io.StringIO())
     m = report.market
 
     symbol = (m.symbol if m and m.symbol else None) or report.address
