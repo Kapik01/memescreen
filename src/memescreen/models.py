@@ -37,6 +37,8 @@ class RiskData:
     lp_locked_pct: float | None
     top_holders: list[HolderShare] = field(default_factory=list)
     risk_flags: list[str] = field(default_factory=list)
+    # Subset of risk_flags whose RugCheck entry carried level == "danger".
+    danger_flags: list[str] = field(default_factory=list)
     source: str = "rugcheck"
 
 

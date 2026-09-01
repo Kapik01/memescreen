@@ -47,7 +47,9 @@ def _map_report(data: dict) -> RiskData:
         if h.get("address") is not None and h.get("pct") is not None:
             holders.append(HolderShare(address=h["address"], pct=float(h["pct"])))
 
-    flags = [r["name"] for r in (data.get("risks") or []) if r.get("name")]
+    risks = data.get("risks") or []
+    flags = [r["name"] for r in risks if r.get("name")]
+    danger = [r["name"] for r in risks if r.get("name") and r.get("level") == "danger"]
 
     score_norm = data.get("score_normalised")
     score = int(round(score_norm)) if isinstance(score_norm, (int, float)) else None
@@ -59,6 +61,7 @@ def _map_report(data: dict) -> RiskData:
         lp_locked_pct=float(lp_locked) if lp_locked is not None else None,
         top_holders=holders,
         risk_flags=flags,
+        danger_flags=danger,
     )
 
 
