@@ -2,9 +2,13 @@
 gets None and the feature is silently skipped."""
 from __future__ import annotations
 
+import logging
+
 from memescreen import config
 from memescreen.models import HolderData
-from memescreen.providers.base import request_json
+from memescreen.providers.base import request_json, ProviderError
+
+_log = logging.getLogger(__name__)
 
 _SOURCE = "birdeye"
 
@@ -54,3 +58,30 @@ def fetch_holder_data(address: str) -> HolderData | None:
         top20_pct=_sum_pct(items, 20),
         creator_pct=None,
     )
+
+
+def _feed_call(path: str, params: dict, list_key: str) -> set[str]:
+    try:
+        payload = request_json(
+            _SOURCE, "GET", f"{config.BIRDEYE_BASE}{path}",
+            params=params, headers=_headers(),
+        )
+    except ProviderError as exc:
+        _log.warning("birdeye feed %s failed: %s", path, exc.reason)
+        return set()
+    # A list or null body would make payload.get raise AttributeError, which is
+    # not a ProviderError and would take down the whole seed cycle.
+    if not isinstance(payload, dict):
+        return set()
+    items = (payload.get("data") or {}).get(list_key) or []
+    return {it["address"] for it in items if isinstance(it, dict) and it.get("address")}
+
+
+def fetch_feed_addresses() -> set[str]:
+    if not config.BIRDEYE_API_KEY:
+        return set()
+    out: set[str] = set()
+    out |= _feed_call("/defi/token_trending",
+                      {"sort_by": "rank", "sort_type": "asc", "limit": 20}, "tokens")
+    out |= _feed_call("/defi/v2/tokens/new_listing", {"limit": 20}, "items")
+    return out

@@ -24,3 +24,25 @@ def test_env_override(monkeypatch):
 def test_env_helper_casts():
     import memescreen.config as config
     assert config.env("NOPE_MISSING", 3, int) == 3
+
+
+def test_scanner_defaults_present(monkeypatch):
+    import importlib
+    import memescreen.config as config
+    importlib.reload(config)
+    assert config.SPIKE_RATIO_MIN == 8.0
+    assert config.MIN_BUYS == 15
+    assert config.UNIVERSE_CAP == 1500
+    assert config.POLL_INTERVAL_SEC == 60
+    assert config.DB_PATH == "data/memescreen.db"
+    assert config.HOLDER_GROWTH_ABS == 25
+
+
+def test_scanner_env_override(monkeypatch):
+    import importlib
+    monkeypatch.setenv("SPIKE_RATIO_MIN", "12")
+    monkeypatch.setenv("UNIVERSE_CAP", "500")
+    import memescreen.config as config
+    importlib.reload(config)
+    assert config.SPIKE_RATIO_MIN == 12.0
+    assert config.UNIVERSE_CAP == 500

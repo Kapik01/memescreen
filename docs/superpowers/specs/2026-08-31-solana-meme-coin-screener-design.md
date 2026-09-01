@@ -391,7 +391,9 @@ HTTP_TIMEOUT_SEC=10
 SQLite at `data/memescreen.db` (gitignored). Tables:
 
 - **`token_history`** — `address, ts, price_usd, liquidity_usd, market_cap_usd,
-  vol_m5, vol_h1, vol_h6, vol_h24, buys_m5, sells_m5`. Indexed on
+  vol_m5, vol_h1, vol_h6, vol_h24, buys_m5, sells_m5, pair_created_at, dex,
+  symbol`. The last three are what §6's age filter and the alert body read back
+  off the latest row, so they must be persisted, not just fetched. Indexed on
   `(address, ts)`. Pruned every poll cycle to the last `HISTORY_RETENTION_H`
   hours (detector never looks back past `FRESH_WINDOW_MIN`). Steady-state size
   ≈ `UNIVERSE_CAP` × 180 ≈ 270k rows.

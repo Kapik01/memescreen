@@ -1,0 +1,3 @@
+[{"chainId":"solana","tokenAddress":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+ {"chainId":"solana","tokenAddress":"CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"},
+ {"chainId":"ethereum","tokenAddress":"0xdeadbeef"}]

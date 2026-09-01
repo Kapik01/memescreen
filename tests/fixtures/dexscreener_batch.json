@@ -1,0 +1,8 @@
+[
+  {"chainId":"solana","dexId":"raydium","pairAddress":"p-aaa-low","baseToken":{"address":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","name":"Aaa","symbol":"AAA"},
+   "priceUsd":"0.0010","txns":{"m5":{"buys":3,"sells":1}},"volume":{"m5":100.0,"h1":2000.0,"h6":9000.0,"h24":30000.0},"liquidity":{"usd":5000.0},"marketCap":800000,"pairCreatedAt":1722470400000},
+  {"chainId":"solana","dexId":"raydium","pairAddress":"p-aaa-main","baseToken":{"address":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","name":"Aaa","symbol":"AAA"},
+   "priceUsd":"0.0011","txns":{"m5":{"buys":40,"sells":6}},"volume":{"m5":8000.0,"h1":60000.0,"h6":120000.0,"h24":900000.0},"liquidity":{"usd":250000.0},"marketCap":1000000,"pairCreatedAt":1722470400000},
+  {"chainId":"solana","dexId":"orca","pairAddress":"p-bbb","baseToken":{"address":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB","name":"Bbb","symbol":"BBB"},
+   "priceUsd":"2.5","txns":{"m5":{"buys":10,"sells":9}},"volume":{"m5":500.0,"h1":6000.0,"h6":36000.0,"h24":150000.0},"liquidity":{"usd":90000.0},"marketCap":5000000,"pairCreatedAt":1716065147000}
+]

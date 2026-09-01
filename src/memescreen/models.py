@@ -69,3 +69,38 @@ class TokenReport:
     flags: list[Flag] = field(default_factory=list)
     score: int | None = None
     verdict: str | None = None
+
+
+@dataclass
+class MarketSnapshot:
+    """One poll-cycle reading for one token. Feeds `token_history`."""
+    address: str
+    fetched_at: datetime
+    symbol: str | None = None
+    price_usd: float | None = None
+    liquidity_usd: float | None = None
+    market_cap_usd: float | None = None
+    vol_m5: float | None = None
+    vol_h1: float | None = None
+    vol_h6: float | None = None
+    vol_h24: float | None = None
+    buys_m5: int | None = None
+    sells_m5: int | None = None
+    pair_created_at: datetime | None = None
+    dex: str | None = None
+
+
+@dataclass
+class AnomalyHit:
+    address: str
+    detected_at: datetime
+    spike_ratio: float
+    accel: float
+    buy_ratio: float
+    buys_m5: int
+    vol_m5: float
+    vol_h1: float
+    liq_now: float
+    liq_change: float
+    first_seen_at: datetime
+    anomaly_score: int
