@@ -78,3 +78,18 @@ def test_render_keeps_zero_price_line():
     out = render_report(r)
     assert "Price" in out
     assert "$0" in out
+
+
+def test_render_escapes_token_controlled_markup():
+    # A token can name itself anything; rich must not interpret it as markup
+    # (silently swallowing text) or raise on a malformed closing tag.
+    r = _full_report()
+    r.market.symbol = "[bold]SCAM[/]"
+    r.market.name = "[moon]"
+    r.flags = [Flag("red", "RugCheck risks", "[red]danger[/]")]
+    r.provider_errors = {"rugcheck": "[/] bad"}
+    out = render_report(r)
+    assert "[bold]SCAM[/]" in out
+    assert "[red]danger[/]" in out
+    assert "[moon]" in out
+    assert "[/] bad" in out

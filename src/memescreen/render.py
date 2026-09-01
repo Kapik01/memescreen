@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from memescreen.models import TokenReport
@@ -31,8 +32,11 @@ def render_report(report: TokenReport) -> str:
     console = Console(record=True, width=100, file=io.StringIO())
     m = report.market
 
-    symbol = (m.symbol if m and m.symbol else None) or report.address
-    name = f"  ({m.name})" if m and m.name else ""
+    # Everything below that comes from an API (symbol, name, flag text, socials,
+    # error strings) is escaped: token metadata is attacker-controlled and rich
+    # would otherwise treat "[bold]" as markup and choke on "[/]".
+    symbol = escape((m.symbol if m and m.symbol else None) or report.address)
+    name = f"  ({escape(m.name)})" if m and m.name else ""
     console.print(f"[bold]{symbol}[/bold]{name}")
     console.print(
         f"VERDICT: {report.verdict}  ·  score {report.score}/100"
@@ -41,7 +45,7 @@ def render_report(report: TokenReport) -> str:
 
     table = Table(show_header=False, box=None, pad_edge=False)
     for f in report.flags:
-        table.add_row(_ICON.get(f.level, "?"), f.check, "—", f.message)
+        table.add_row(_ICON.get(f.level, "?"), escape(f.check), "—", escape(f.message))
     console.print(table)
     console.print("")
 
@@ -51,7 +55,7 @@ def render_report(report: TokenReport) -> str:
         ("24h volume", _fmt_usd(m.volume_24h_usd) if m and m.volume_24h_usd is not None else None),
         ("Market cap", _fmt_usd(m.market_cap_usd) if m and m.market_cap_usd is not None else None),
         ("Age", _age(report)),
-        ("DEX", m.dex if m and m.dex is not None else None),
+        ("DEX", escape(m.dex) if m and m.dex is not None else None),
     ]
     printed_any = False
     for label, value in market_lines:
@@ -59,7 +63,7 @@ def render_report(report: TokenReport) -> str:
             console.print(f"{label:<12} {value}")
             printed_any = True
     if m and m.socials:
-        console.print(f"{'Socials':<12} " + "  ".join(m.socials))
+        console.print(f"{'Socials':<12} " + "  ".join(escape(s) for s in m.socials))
         printed_any = True
     if printed_any:
         console.print("")
@@ -67,10 +71,11 @@ def render_report(report: TokenReport) -> str:
     if report.provider_errors:
         console.print("[bold]Data gaps[/bold]")
         for source, reason in report.provider_errors.items():
-            console.print(f"  {source}: {reason}")
+            console.print(f"  {escape(source)}: {escape(reason)}")
         console.print("")
 
-    console.print(f"Contract: {report.address}")
-    console.print(f"Chart:    https://dexscreener.com/solana/{report.address}")
+    address = escape(report.address)
+    console.print(f"Contract: {address}")
+    console.print(f"Chart:    https://dexscreener.com/solana/{address}")
 
     return console.export_text()
