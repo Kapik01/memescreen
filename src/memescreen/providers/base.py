@@ -41,7 +41,7 @@ def request_json(
     client = get_client()
     attempts = config.HTTP_RETRIES + 1
     last_reason = "unknown error"
-    for attempt in range(attempts):
+    for _ in range(attempts):
         try:
             resp = client.request(
                 method, url, params=params, headers=headers, json=json_body
@@ -62,7 +62,7 @@ def request_json(
             )
         try:
             return resp.json()
-        except (json.JSONDecodeError, ValueError):
-            raise ProviderError(source, "response body was not valid JSON")
+        except json.JSONDecodeError:
+            raise ProviderError(source, "response body was not valid JSON") from None
 
     raise ProviderError(source, last_reason)

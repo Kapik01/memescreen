@@ -15,11 +15,12 @@ def test_success_returns_parsed_json():
 
 @respx.mock
 def test_4xx_raises_provider_error_with_status_in_reason():
-    respx.get("https://x.test/nope").mock(return_value=httpx.Response(404))
+    route = respx.get("https://x.test/nope").mock(return_value=httpx.Response(404))
     with pytest.raises(ProviderError) as ei:
         request_json("x", "GET", "https://x.test/nope")
     assert ei.value.source == "x"
     assert ei.value.reason.startswith("404")
+    assert route.call_count == 1
 
 
 @respx.mock
@@ -33,10 +34,11 @@ def test_retries_once_on_500_then_succeeds():
 
 @respx.mock
 def test_gives_up_after_retries_on_persistent_500():
-    respx.get("https://x.test/down").mock(return_value=httpx.Response(500))
+    route = respx.get("https://x.test/down").mock(return_value=httpx.Response(500))
     with pytest.raises(ProviderError) as ei:
         request_json("x", "GET", "https://x.test/down")
     assert ei.value.reason.startswith("500")
+    assert route.call_count == 2
 
 
 @respx.mock
