@@ -65,3 +65,34 @@ VERDICT_AVOID_MAX: int = env("VERDICT_AVOID_MAX", 40, int)
 VERDICT_TRADE_MIN: int = env("VERDICT_TRADE_MIN", 70, int)
 
 RUGCHECK_DANGER_MAX: float = env("RUGCHECK_DANGER_MAX", 60.0, float)
+
+# --- scanner: detection (spec §5) ---
+SPIKE_RATIO_MIN: float = env("SPIKE_RATIO_MIN", 8.0, float)
+ACCEL_MIN: float = env("ACCEL_MIN", 3.0, float)
+BUY_RATIO_MIN: float = env("BUY_RATIO_MIN", 0.6, float)
+MIN_BUYS: int = env("MIN_BUYS", 15, int)
+VOL_M5_FLOOR: float = env("VOL_M5_FLOOR", 3_000.0, float)
+FRESH_WINDOW_MIN: float = env("FRESH_WINDOW_MIN", 90.0, float)
+BASELINE_WINDOW_MIN: float = env("BASELINE_WINDOW_MIN", 45.0, float)
+BASELINE_EXCLUDE_MIN: float = env("BASELINE_EXCLUDE_MIN", 10.0, float)
+LIQ_REF_MIN: float = env("LIQ_REF_MIN", 30.0, float)
+LIQ_REF_TOL_MIN: float = env("LIQ_REF_TOL_MIN", 10.0, float)
+LIQ_HOLD_MIN: float = env("LIQ_HOLD_MIN", 0.9, float)
+DETECT_MIN_HISTORY_MIN: float = env("DETECT_MIN_HISTORY_MIN", 45.0, float)
+
+# --- scanner: strict filter gate (spec §6) ---
+LP_LOCKED_MIN: float = env("LP_LOCKED_MIN", 90.0, float)
+MIN_LIQUIDITY: float = env("MIN_LIQUIDITY", 20_000.0, float)
+MIN_AGE_MIN: float = env("MIN_AGE_MIN", 60.0, float)
+HOLDER_GROWTH_MIN: float = env("HOLDER_GROWTH_MIN", 0.05, float)
+HOLDER_GROWTH_ABS: int = env("HOLDER_GROWTH_ABS", 25, int)
+
+# --- scanner: ops (spec §10, §12) ---
+POLL_INTERVAL_SEC: int = env("POLL_INTERVAL_SEC", 60, int)
+SEED_INTERVAL_SEC: int = env("SEED_INTERVAL_SEC", 180, int)
+UNIVERSE_CAP: int = env("UNIVERSE_CAP", 1500, int)
+ALERT_COOLDOWN_H: float = env("ALERT_COOLDOWN_H", 6.0, float)
+HISTORY_RETENTION_H: float = env("HISTORY_RETENTION_H", 3.0, float)
+RISK_CACHE_TTL_H: float = env("RISK_CACHE_TTL_H", 6.0, float)
+BATCH_SIZE: int = env("BATCH_SIZE", 30, int)
+DB_PATH: str = env("DB_PATH", "data/memescreen.db", str)
