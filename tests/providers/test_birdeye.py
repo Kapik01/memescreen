@@ -98,3 +98,30 @@ def test_requests_carry_key_chain_and_holder_limit(monkeypatch):
     holder_request = holders.calls.last.request
     assert holder_request.url.params["address"] == ADDR
     assert holder_request.url.params["limit"] == "20"
+
+
+@respx.mock
+def test_feed_addresses_union_of_trending_and_new_listing(monkeypatch):
+    birdeye = _reload_with_key(monkeypatch, "testkey")
+    respx.get(url__regex=r"https://public-api\.birdeye\.so/defi/token_trending.*").mock(
+        return_value=httpx.Response(200, json=_load("birdeye_trending.json")))
+    respx.get(url__regex=r"https://public-api\.birdeye\.so/defi/v2/tokens/new_listing.*").mock(
+        return_value=httpx.Response(200, json=_load("birdeye_new_listing.json")))
+    addrs = birdeye.fetch_feed_addresses()
+    assert "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE" in addrs
+    assert "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF" in addrs
+
+
+def test_feed_addresses_empty_without_key(monkeypatch):
+    birdeye = _reload_with_key(monkeypatch, None)
+    assert birdeye.fetch_feed_addresses() == set()
+
+
+@respx.mock
+def test_feed_addresses_tolerates_one_endpoint_down(monkeypatch):
+    birdeye = _reload_with_key(monkeypatch, "testkey")
+    respx.get(url__regex=r".*/defi/token_trending.*").mock(return_value=httpx.Response(429))
+    respx.get(url__regex=r".*/defi/v2/tokens/new_listing.*").mock(
+        return_value=httpx.Response(200, json=_load("birdeye_new_listing.json")))
+    addrs = birdeye.fetch_feed_addresses()
+    assert "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG" in addrs
