@@ -56,3 +56,15 @@ def test_timeout_raises_provider_error():
     with pytest.raises(ProviderError) as ei:
         request_json("x", "GET", "https://x.test/slow")
     assert "timeout" in ei.value.reason.lower()
+
+
+@respx.mock
+def test_undecodable_body_raises_provider_error():
+    # A 200 whose bytes are not valid UTF-8: json() raises a ValueError that is
+    # not necessarily a JSONDecodeError, and must not escape as a raw error.
+    respx.get("https://x.test/binary").mock(
+        return_value=httpx.Response(200, content=b"\xff\xfe\x00bad")
+    )
+    with pytest.raises(ProviderError) as ei:
+        request_json("x", "GET", "https://x.test/binary")
+    assert ei.value.source == "x"

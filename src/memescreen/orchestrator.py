@@ -13,23 +13,24 @@ from memescreen.providers.base import ProviderError
 def screen(address: str) -> TokenReport:
     errors: dict[str, str] = {}
 
-    try:
-        market = dexscreener.fetch_market_data(address)
-    except ProviderError as exc:
-        market, errors[exc.source] = None, exc.reason
+    def call(fetch, source: str):
+        """Run one provider. Any failure is recorded, never raised: a partial
+        report is the product (spec §3.2), and a malformed-but-2xx payload can
+        raise anything the mapping code happens to hit."""
+        try:
+            return fetch(address)
+        except ProviderError as exc:
+            errors[exc.source] = exc.reason
+        except Exception as exc:  # malformed 2xx payload / unexpected shape
+            errors[source] = f"unexpected {type(exc).__name__} mapping response"
+        return None
 
-    try:
-        risk = rugcheck.fetch_risk_data(address)
-    except ProviderError as exc:
-        risk, errors[exc.source] = None, exc.reason
-
-    try:
-        holders = birdeye.fetch_holder_data(address)
-    except ProviderError as exc:
-        holders, errors[exc.source] = None, exc.reason
+    market = call(dexscreener.fetch_market_data, "dexscreener")
+    risk = call(rugcheck.fetch_risk_data, "rugcheck")
+    holders = call(birdeye.fetch_holder_data, "birdeye")
 
     if market is not None and (market.name is None or market.symbol is None):
-        fallback = helius.fetch_metadata_fallback(address)
+        fallback = call(helius.fetch_metadata_fallback, "helius")
         if fallback is not None:
             name, symbol = fallback
             market.name = market.name or name

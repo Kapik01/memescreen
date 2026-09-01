@@ -62,7 +62,9 @@ def request_json(
             )
         try:
             return resp.json()
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, ValueError):
+            # ValueError also covers UnicodeDecodeError: a 200 body that is not
+            # decodable text never reaches json.JSONDecodeError.
             raise ProviderError(source, "response body was not valid JSON") from None
 
     raise ProviderError(source, last_reason)
