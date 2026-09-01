@@ -101,6 +101,16 @@ def test_format_message_missing_rugcheck_score_shows_na():
     assert "RugCheck score: n/a" in alerter.format_message(_hit(), _ctx(risk=risk))
 
 
+def test_format_message_shows_deployer_line_when_pumpfun_coins_known():
+    msg = alerter.format_message(_hit(), _ctx(pumpfun_coins=3))
+    assert "Deployer: 3 pump.fun coins launched" in msg
+
+
+def test_format_message_omits_deployer_line_when_unknown():
+    msg = alerter.format_message(_hit(), _ctx(pumpfun_coins=None))
+    assert "Deployer:" not in msg
+
+
 # --- send ---------------------------------------------------------------
 
 @respx.mock

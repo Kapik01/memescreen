@@ -1,6 +1,6 @@
 """Tests for the strict safety/quality filter gate (spec §6). See
-scanner/filters.py for the exact eight-filter order and fail-closed
-semantics these exercise."""
+scanner/filters.py for the exact nine-filter order and fail-closed
+semantics these exercise (filter 9, pump.fun serial-creator, is fail-open)."""
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -84,6 +84,8 @@ def _passing_setup(store, monkeypatch, holder_count=200, first_holder_count=100)
         filters.birdeye, "fetch_holder_data",
         lambda addr: _holders(holder_count=holder_count),
     )
+    # Filter 9 default: not a pump.fun token -> skipped. No live network.
+    monkeypatch.setattr(filters.pumpfun, "fetch_creator_stats", lambda addr: None)
     return _RiskCacheStub(_risk())
 
 
@@ -342,3 +344,61 @@ def test_every_evaluation_records_a_hits_row(monkeypatch):
 
         assert len(calls) == 2
         assert all(passed_gate is True and reason is None for _, passed_gate, reason in calls)
+
+
+# --- filter 9: pump.fun serial-creator (fail-open) -----------------------
+
+from memescreen.models import CreatorStats  # noqa: E402
+
+
+def test_serial_pumpfun_creator_is_dropped(monkeypatch):
+    with Store(":memory:") as store:
+        risk_cache = _passing_setup(store, monkeypatch)
+        monkeypatch.setattr(
+            filters.pumpfun, "fetch_creator_stats",
+            lambda addr: CreatorStats(wallet="farmWallet", coins_created=50, capped=True),
+        )
+        passed, reason, ctx = filters.evaluate(_hit(), store, risk_cache, _snap())
+
+        assert passed is False
+        assert reason == "serial pump.fun creator (50+ coins)"
+        assert ctx.pumpfun_creator == "farmWallet"
+        assert ctx.pumpfun_coins == 50
+
+
+def test_low_count_pumpfun_creator_passes_and_annotates(monkeypatch):
+    with Store(":memory:") as store:
+        risk_cache = _passing_setup(store, monkeypatch)
+        monkeypatch.setattr(
+            filters.pumpfun, "fetch_creator_stats",
+            lambda addr: CreatorStats(wallet="w", coins_created=2, capped=False),
+        )
+        passed, reason, ctx = filters.evaluate(_hit(), store, risk_cache, _snap())
+
+        assert (passed, reason) == (True, "")
+        assert ctx.pumpfun_coins == 2
+        assert ctx.pumpfun_creator == "w"
+
+
+def test_non_pumpfun_token_skips_filter_9(monkeypatch):
+    with Store(":memory:") as store:
+        risk_cache = _passing_setup(store, monkeypatch)  # stub already returns None
+        passed, reason, ctx = filters.evaluate(_hit(), store, risk_cache, _snap())
+
+        assert (passed, reason) == (True, "")
+        assert ctx.pumpfun_coins is None
+        assert ctx.pumpfun_creator is None
+
+
+def test_pumpfun_lookup_raising_does_not_break_the_gate(monkeypatch):
+    with Store(":memory:") as store:
+        risk_cache = _passing_setup(store, monkeypatch)
+
+        def boom(addr):
+            raise RuntimeError("cloudflare")
+
+        monkeypatch.setattr(filters.pumpfun, "fetch_creator_stats", boom)
+        passed, reason, ctx = filters.evaluate(_hit(), store, risk_cache, _snap())
+
+        assert (passed, reason) == (True, "")  # fail-open
+        assert ctx.pumpfun_coins is None

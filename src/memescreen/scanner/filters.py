@@ -1,18 +1,22 @@
-"""Strict safety/quality gate (spec §6): the eight-filter chain that decides
+"""Strict safety/quality gate (spec §6): the nine-filter chain that decides
 whether a detected `AnomalyHit` becomes a Discord alert.
 
-Fail-closed by design: any filter whose safety data could not be obtained
-(risk cache miss, a Birdeye error, a missing holder baseline) is treated as
-a failure, never a pass. `evaluate()` always calls `store.record_hit(...)`
-exactly once, on every path, so every gate decision is auditable in the
-`hits` table regardless of outcome."""
+Filters 1-8 are fail-closed: any filter whose safety data could not be
+obtained (risk cache miss, a Birdeye error, a missing holder baseline) is
+treated as a failure, never a pass. Filter 9 (pump.fun serial-creator) is
+fail-OPEN: it only drops an alert when it positively identifies a farm
+wallet; a non-pump.fun token or an unreachable API just skips it.
+
+`evaluate()` always calls `store.record_hit(...)` exactly once, on every
+path, so every gate decision is auditable in the `hits` table regardless
+of outcome."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from memescreen import config
 from memescreen.models import AnomalyHit, HolderData, MarketSnapshot, RiskData
-from memescreen.providers import birdeye
+from memescreen.providers import birdeye, pumpfun
 from memescreen.providers.base import ProviderError
 from memescreen.scanner.riskcache import RiskCache
 from memescreen.scanner.store import Store
@@ -29,6 +33,8 @@ class FilterContext:
     age_min: float | None
     dex: str | None
     symbol: str | None = None  # Ruling B: filled by the caller (Task 11) later
+    pumpfun_creator: str | None = None
+    pumpfun_coins: int | None = None
 
 
 def evaluate(
@@ -106,5 +112,18 @@ def evaluate(
     )
     if not grew_enough:
         return _done(False, "holders flat")
+
+    # 9. pump.fun serial-creator (fail-open). Only reached by tokens that
+    # cleared 1-8, so at most a few pump.fun calls per hour.
+    try:
+        stats = pumpfun.fetch_creator_stats(hit.address)
+    except Exception:  # unofficial API -- never let it break the gate
+        stats = None
+    if stats is not None:
+        ctx.pumpfun_creator = stats.wallet
+        ctx.pumpfun_coins = stats.coins_created
+        if stats.coins_created >= config.PUMPFUN_MAX_COINS:
+            plus = "+" if stats.capped else ""
+            return _done(False, f"serial pump.fun creator ({stats.coins_created}{plus} coins)")
 
     return _done(True, "")

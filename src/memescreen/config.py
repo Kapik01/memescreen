@@ -89,6 +89,17 @@ MIN_AGE_MIN: float = env("MIN_AGE_MIN", 60.0, float)
 HOLDER_GROWTH_MIN: float = env("HOLDER_GROWTH_MIN", 0.05, float)
 HOLDER_GROWTH_ABS: int = env("HOLDER_GROWTH_ABS", 25, int)
 
+# pump.fun serial-creator check (filter 9). A wallet that has launched this
+# many pump.fun coins is a farm -> drop the alert. Soft: skipped entirely
+# when the token isn't a pump.fun launch or the API is unreachable.
+# Keep PUMPFUN_MAX_COINS < PUMPFUN_COUNT_LIMIT: coins_created saturates at the
+# page limit, so a MAX above it could never trip.
+PUMPFUN_BASE: str = env("PUMPFUN_BASE", "https://frontend-api-v3.pump.fun", str)
+PUMPFUN_COUNT_LIMIT: int = env("PUMPFUN_COUNT_LIMIT", 50, int)
+PUMPFUN_MAX_COINS: int = min(
+    env("PUMPFUN_MAX_COINS", 20, int), PUMPFUN_COUNT_LIMIT
+)
+
 # --- scanner: ops (spec §10, §12) ---
 POLL_INTERVAL_SEC: int = env("POLL_INTERVAL_SEC", 60, int)
 SEED_INTERVAL_SEC: int = env("SEED_INTERVAL_SEC", 180, int)

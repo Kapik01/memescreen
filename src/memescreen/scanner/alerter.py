@@ -89,6 +89,11 @@ def format_message(hit: AnomalyHit, ctx: FilterContext) -> str:
         # `rug or 'n/a'` would render 0 -- the SAFEST possible score -- as
         # "unavailable"; only None means unavailable.
         f"RugCheck score: {rug if rug is not None else 'n/a'}",
+        *(
+            [f"Deployer: {ctx.pumpfun_coins} pump.fun coins launched"]
+            if ctx.pumpfun_coins is not None
+            else []
+        ),
         "",
         f"Contract: {hit.address}",
         f"Chart: https://dexscreener.com/solana/{hit.address}",
