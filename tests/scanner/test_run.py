@@ -34,7 +34,6 @@ def test_cycle_swallows_a_failing_step(monkeypatch, caplog):
 
 
 def test_build_logger_is_idempotent(tmp_path, monkeypatch):
-    monkeypatch.setattr(run.config, "DB_PATH", str(tmp_path / "x.db"))
     monkeypatch.setattr(run, "_LOG_PATH", str(tmp_path / "memescreen.log"))
     a = run.build_logger()
     b = run.build_logger()
@@ -60,13 +59,15 @@ def test_hit_is_filtered_and_alerted(monkeypatch):
     monkeypatch.setattr(run.poller, "poll_once", lambda s, now: 1)
     monkeypatch.setattr(run.detector, "detect_all", lambda s, now: [hit])
     monkeypatch.setattr(run, "_latest_or_none", lambda s, a: snap)
+    # FilterContext carries a stale symbol; only `run.cycle` reassigning
+    # ctx.symbol = snap.symbol (Ruling B) makes the spy see "AAA".
     monkeypatch.setattr(
         run.filters, "evaluate",
         lambda h, s, rc, snapshot: (
             True, "",
             run.filters.FilterContext(
                 risk=None, holders=None, holder_growth=30, age_min=120.0,
-                dex="raydium", symbol="AAA",
+                dex="raydium", symbol="OLD",
             ),
         ),
     )
