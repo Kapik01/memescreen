@@ -9,6 +9,11 @@ _B = "https://frontend-api-v3.pump.fun"
 MINT = "9bTJqiCWRcMstWKdpLtxbWbnUJERnewFxFSjw8zRpump"
 CREATOR = "CxxcsDAobcZPeYgWUGfuXb4Via5QNm9xhdU96dUTKsfR"
 
+# respx returns the first registered route that matches. In these tests the
+# exact /coins/{MINT} route is always registered BEFORE the broader
+# url__startswith .../coins route, so call 1 (no query) hits the exact route
+# and call 2 (?creator=...) hits the broad one. Reordering would fail loudly.
+
 
 @respx.mock
 def test_returns_creator_and_count():
@@ -93,5 +98,21 @@ def test_system_program_creator_returns_none():
     # v3 answers for non-pump.fun mints with the system program as "creator".
     respx.get(f"{_B}/coins/{MINT}").mock(
         return_value=httpx.Response(200, json={"creator": "1" * 32})
+    )
+    assert pumpfun.fetch_creator_stats(MINT) is None
+
+
+@respx.mock
+def test_empty_string_creator_returns_none():
+    respx.get(f"{_B}/coins/{MINT}").mock(
+        return_value=httpx.Response(200, json={"creator": ""})
+    )
+    assert pumpfun.fetch_creator_stats(MINT) is None
+
+
+@respx.mock
+def test_non_string_creator_returns_none():
+    respx.get(f"{_B}/coins/{MINT}").mock(
+        return_value=httpx.Response(200, json={"creator": 12345})
     )
     assert pumpfun.fetch_creator_stats(MINT) is None

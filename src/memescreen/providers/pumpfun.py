@@ -35,7 +35,7 @@ def fetch_creator_stats(mint: str) -> CreatorStats | None:
         _log.info("pumpfun /coins/%s -> %s (skipping creator check)", mint[:8], exc.reason)
         return None
 
-    creator = (coin or {}).get("creator") if isinstance(coin, dict) else None
+    creator = coin.get("creator") if isinstance(coin, dict) else None
     if not isinstance(creator, str) or not creator:
         return None
     # The v3 API answers for non-pump.fun mints too, with the system program as
