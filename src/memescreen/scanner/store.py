@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS token_history (
   price_usd REAL, liquidity_usd REAL, market_cap_usd REAL,
   vol_m5 REAL, vol_h1 REAL, vol_h6 REAL, vol_h24 REAL,
   buys_m5 INTEGER, sells_m5 INTEGER,
+  pair_created_at TEXT, dex TEXT, symbol TEXT,
   PRIMARY KEY (address, ts)
 );
 CREATE INDEX IF NOT EXISTS ix_history_addr_ts ON token_history(address, ts);
@@ -43,6 +44,15 @@ _HISTORY_COLUMNS = (
     "buys_m5", "sells_m5",
 )
 
+# Columns `history()` hands the detector. Explicit (not `SELECT *`) so the row
+# dicts never carry the raw-string `pair_created_at` / `dex` / `symbol` next to
+# the parsed `datetime` ts -- the detector reads none of those three.
+_HISTORY_READ_COLUMNS = ("address", "ts") + _HISTORY_COLUMNS
+
+# Added after the original 11-column token_history shipped; existing databases
+# are migrated in place by Store.__init__.
+_HISTORY_ADDED_COLUMNS = ("pair_created_at", "dex", "symbol")
+
 
 class Store:
     def __init__(self, path: str = ":memory:") -> None:
@@ -51,6 +61,21 @@ class Store:
         if path != ":memory:":
             self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(_SCHEMA)
+        self._migrate()
+        self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Bring a pre-existing `token_history` up to the current column set.
+
+        `CREATE TABLE IF NOT EXISTS` is a no-op against a database written by
+        an earlier build, so the three columns added after first ship have to
+        be applied with `ALTER TABLE`. Idempotent: each column is added only
+        when `PRAGMA table_info` says it is missing.
+        """
+        existing = {r[1] for r in self._conn.execute("PRAGMA table_info(token_history)")}
+        for col in _HISTORY_ADDED_COLUMNS:
+            if col not in existing:
+                self._conn.execute(f"ALTER TABLE token_history ADD COLUMN {col} TEXT")
         self._conn.commit()
 
     def close(self) -> None:
@@ -71,6 +96,8 @@ class Store:
                 snap.price_usd, snap.liquidity_usd, snap.market_cap_usd,
                 snap.vol_m5, snap.vol_h1, snap.vol_h6, snap.vol_h24,
                 snap.buys_m5, snap.sells_m5,
+                snap.pair_created_at.isoformat() if snap.pair_created_at is not None else None,
+                snap.dex, snap.symbol,
             )
             for snap in snaps
         ]
@@ -79,16 +106,17 @@ class Store:
         self._conn.executemany(
             "INSERT OR REPLACE INTO token_history "
             "(address, ts, price_usd, liquidity_usd, market_cap_usd, "
-            "vol_m5, vol_h1, vol_h6, vol_h24, buys_m5, sells_m5) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "vol_m5, vol_h1, vol_h6, vol_h24, buys_m5, sells_m5, "
+            "pair_created_at, dex, symbol) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
         self._conn.commit()
 
     def history(self, address: str, since: datetime) -> list[dict]:
         cur = self._conn.execute(
-            "SELECT * FROM token_history WHERE address = ? AND ts >= ? "
-            "ORDER BY ts ASC",
+            f"SELECT {', '.join(_HISTORY_READ_COLUMNS)} FROM token_history "
+            "WHERE address = ? AND ts >= ? ORDER BY ts ASC",
             (address, since.isoformat()),
         )
         out = []
@@ -121,7 +149,7 @@ class Store:
         return MarketSnapshot(
             address=d["address"],
             fetched_at=datetime.fromisoformat(d["ts"]),
-            symbol=None,
+            symbol=d["symbol"],
             price_usd=d["price_usd"],
             liquidity_usd=d["liquidity_usd"],
             market_cap_usd=d["market_cap_usd"],
@@ -131,8 +159,12 @@ class Store:
             vol_h24=d["vol_h24"],
             buys_m5=d["buys_m5"],
             sells_m5=d["sells_m5"],
-            pair_created_at=None,
-            dex=None,
+            pair_created_at=(
+                datetime.fromisoformat(d["pair_created_at"])
+                if d["pair_created_at"]
+                else None
+            ),
+            dex=d["dex"],
         )
 
     def prune_history(self, now: datetime) -> int:
