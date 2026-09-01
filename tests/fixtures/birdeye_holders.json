@@ -1,0 +1,12 @@
+{"success": true, "data": {"items": [
+  {"owner": "h1", "percentage": 4.2}, {"owner": "h2", "percentage": 3.1},
+  {"owner": "h3", "percentage": 2.0}, {"owner": "h4", "percentage": 1.8},
+  {"owner": "h5", "percentage": 1.5}, {"owner": "h6", "percentage": 1.2},
+  {"owner": "h7", "percentage": 1.1}, {"owner": "h8", "percentage": 1.0},
+  {"owner": "h9", "percentage": 0.9}, {"owner": "h10", "percentage": 0.8},
+  {"owner": "h11", "percentage": 0.7}, {"owner": "h12", "percentage": 0.6},
+  {"owner": "h13", "percentage": 0.5}, {"owner": "h14", "percentage": 0.4},
+  {"owner": "h15", "percentage": 0.3}, {"owner": "h16", "percentage": 0.3},
+  {"owner": "h17", "percentage": 0.2}, {"owner": "h18", "percentage": 0.2},
+  {"owner": "h19", "percentage": 0.1}, {"owner": "h20", "percentage": 0.1}
+]}}
