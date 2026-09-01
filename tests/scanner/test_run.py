@@ -1,6 +1,6 @@
-"""Task 11: the always-on scan loop. We exercise `build_logger` and `cycle`
-only -- never `main`, which owns an infinite loop (that is Task 12's
-integration test)."""
+"""Task 11: the always-on scan loop. We exercise `build_logger`, `cycle` and
+the pure cadence helper `_advance` -- never `main` itself, which owns an
+infinite loop (that is Task 12's integration test)."""
 import logging
 
 from datetime import UTC, datetime
@@ -44,6 +44,41 @@ def test_build_logger_is_idempotent(tmp_path, monkeypatch):
         for h in a.handlers[:]:
             a.removeHandler(h)
             h.close()
+
+
+def test_cycle_records_a_hit_with_no_snapshot(monkeypatch):
+    hit = AnomalyHit(
+        address="m", detected_at=T0, spike_ratio=20.0, accel=5.0, buy_ratio=0.9,
+        buys_m5=50, vol_m5=9000.0, vol_h1=60000.0, liq_now=60000.0,
+        liq_change=1.0, first_seen_at=T0, anomaly_score=88,
+    )
+    monkeypatch.setattr(run.poller, "poll_once", lambda s, now: 0)
+    monkeypatch.setattr(run.detector, "detect_all", lambda s, now: [hit])
+    monkeypatch.setattr(run, "_latest_or_none", lambda s, a: None)
+
+    with Store(":memory:") as s:
+        run.cycle(s, RiskCache(fetch=lambda a: None), T0, do_seed=False)
+        row = s._conn.execute(
+            "SELECT passed_gate, fail_reason FROM hits WHERE address=?", ("m",)
+        ).fetchone()
+    assert (row["passed_gate"], row["fail_reason"]) == (0, "no snapshot")
+
+
+# --- cadence -------------------------------------------------------------
+
+def test_advance_skips_missed_slots_instead_of_accumulating():
+    # a cycle that overran: the mark is far in the past -> clamp to now, so the
+    # loop sleeps a full interval instead of firing back-to-back cycles
+    assert run._advance(mark=100.0, interval=60.0, now=1000.0) == 1000.0
+
+
+def test_advance_keeps_a_fixed_cadence_when_on_time():
+    assert run._advance(mark=1000.0, interval=60.0, now=1010.0) == 1060.0
+
+
+def test_advance_at_exactly_now_returns_now():
+    # mark + interval == now: the boundary must not step backwards
+    assert run._advance(mark=940.0, interval=60.0, now=1000.0) == 1000.0
 
 
 def test_hit_is_filtered_and_alerted(monkeypatch):

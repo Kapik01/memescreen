@@ -56,6 +56,19 @@ def build_logger() -> logging.Logger:
     return logger
 
 
+def _advance(mark: float, interval: float, now: float) -> float:
+    """Next cadence mark, skipping any slot a slow cycle has already missed.
+
+    Plain `mark += interval` accumulates: a cycle that overruns by minutes
+    (50 sequential DexScreener calls x a 10s timeout with a retry, when the
+    API is degraded) leaves the mark far in the past, and the loop then fires
+    several back-to-back zero-sleep cycles at the already-struggling API --
+    with `do_seed` latching true for each. Clamping to `now` drops the missed
+    slots instead of replaying them.
+    """
+    return max(mark + interval, now)
+
+
 def _latest_or_none(store: Store, address: str):
     """Thin wrapper over ``store.latest_snapshot`` so tests can monkeypatch
     the snapshot lookup independently of the store (Ruling A)."""
@@ -74,6 +87,9 @@ def cycle(store: Store, risk_cache: RiskCache, now: datetime, *, do_seed: bool) 
         for hit in hits:
             snap = _latest_or_none(store, hit.address)
             if snap is None:
+                # Unreachable while the detector only fires on stored history,
+                # but spec section 6 requires every hit to reach the table.
+                store.record_hit(hit, passed_gate=False, fail_reason="no snapshot")
                 continue
             passed, _reason, ctx = filters.evaluate(hit, store, risk_cache, snap)
             if passed:
@@ -104,6 +120,10 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError:
         pass
 
+    # Paths in config are cwd-relative; log the resolved one so a run started
+    # from an unexpected directory is obvious in the log rather than silently
+    # writing a second database.
+    log.info("db: %s", os.path.abspath(config.DB_PATH))
     store = Store(config.DB_PATH)
     risk_cache = RiskCache()
     if not alerter.telegram_configured():
@@ -121,9 +141,10 @@ def main(argv: list[str] | None = None) -> int:
             continue
         do_seed = time.monotonic() >= next_seed
         cycle(store, risk_cache, datetime.now(UTC), do_seed=do_seed)
-        next_poll += config.POLL_INTERVAL_SEC
+        now_mono = time.monotonic()
+        next_poll = _advance(next_poll, config.POLL_INTERVAL_SEC, now_mono)
         if do_seed:
-            next_seed += config.SEED_INTERVAL_SEC
+            next_seed = _advance(next_seed, config.SEED_INTERVAL_SEC, now_mono)
 
     store.prune_history(datetime.now(UTC))
     store.close()
