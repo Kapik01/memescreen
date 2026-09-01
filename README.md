@@ -22,6 +22,15 @@ keys enriches holder data and metadata.
 
 `memescreen scan` — continuous volume-spike scanner — arrives in Plan 2.
 
+### Known caveat: unverified provider field paths
+
+The Birdeye and Helius JSON field paths — `data.holder`, `data.items[].percentage`
+(Birdeye) and `result.content.metadata.name` / `.symbol` (Helius) — are mapped
+from vendor documentation and have **not** been verified against live responses.
+DexScreener and RugCheck were. If holder counts, top-10 concentration, or the
+token name/symbol fallback look wrong, check those paths against a real response
+first — the fixtures in `tests/fixtures/` encode the same assumption.
+
 ## Tests
 
 ```bash

@@ -23,11 +23,15 @@ def _sum_pct(items: list[dict], n: int) -> float | None:
     if not items:
         return None
     total = 0.0
+    parsed_any = False
     for item in items[:n]:
         pct = item.get("percentage")
         if isinstance(pct, (int, float)):
             total += float(pct)
-    return total
+            parsed_any = True
+    # Nothing parsed means we know nothing; 0.0 would read downstream as a
+    # green "0% held by top 10", a safety signal we never actually saw.
+    return total if parsed_any else None
 
 
 def fetch_holder_data(address: str) -> HolderData | None:

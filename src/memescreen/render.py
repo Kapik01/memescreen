@@ -17,6 +17,17 @@ def _fmt_usd(value: float | None) -> str | None:
     return f"${value:,.0f}" if value is not None else None
 
 
+def _fmt_price(value: float) -> str:
+    """Significant figures, not fixed decimals: meme coins routinely price
+    below 1e-8, where a fixed 8-decimal format collapses to "$0."."""
+    if value >= 0.01:
+        text = f"{value:,.6g}"
+        if "." in text:  # unguarded rstrip would turn "1,000" into "1,"
+            text = text.rstrip("0").rstrip(".")
+        return f"${text}"
+    return f"${value:.3g}"
+
+
 def _age(report: TokenReport) -> str | None:
     if not report.market or report.market.pair_created_at is None:
         return None
@@ -50,7 +61,7 @@ def render_report(report: TokenReport) -> str:
     console.print("")
 
     market_lines = [
-        ("Price", f"${m.price_usd:.8f}".rstrip("0") if m and m.price_usd is not None else None),
+        ("Price", _fmt_price(m.price_usd) if m and m.price_usd is not None else None),
         ("Liquidity", _fmt_usd(m.liquidity_usd) if m and m.liquidity_usd is not None else None),
         ("24h volume", _fmt_usd(m.volume_24h_usd) if m and m.volume_24h_usd is not None else None),
         ("Market cap", _fmt_usd(m.market_cap_usd) if m and m.market_cap_usd is not None else None),

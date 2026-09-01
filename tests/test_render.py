@@ -93,3 +93,18 @@ def test_render_escapes_token_controlled_markup():
     assert "[red]danger[/]" in out
     assert "[moon]" in out
     assert "[/] bad" in out
+
+
+def test_render_sub_nano_price_is_not_flattened_to_zero():
+    r = _full_report()
+    r.market.price_usd = 3.1e-9
+    out = render_report(r)
+    assert "3.1e-09" in out
+    assert "$0." not in out
+
+
+def test_render_price_keeps_whole_dollar_amounts():
+    r = _full_report()
+    r.market.price_usd = 1000.0
+    out = render_report(r)
+    assert "$1,000" in out

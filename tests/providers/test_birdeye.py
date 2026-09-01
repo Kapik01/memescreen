@@ -58,3 +58,43 @@ def test_rate_limit_propagates(monkeypatch):
     respx.get(OVERVIEW).mock(return_value=httpx.Response(429))
     with pytest.raises(ProviderError):
         birdeye.fetch_holder_data(ADDR)
+
+
+@respx.mock
+def test_holder_percentages_absent_yield_none_not_zero(monkeypatch):
+    # A non-empty items list where nothing is parseable must not be reported
+    # as "0% held by top 10" — that is a fabricated safety signal.
+    birdeye = _reload_with_key(monkeypatch, "testkey")
+    respx.get(OVERVIEW).mock(
+        return_value=httpx.Response(200, json=_load("birdeye_overview.json"))
+    )
+    respx.get(HOLDERS).mock(
+        return_value=httpx.Response(200, json={"data": {"items": [
+            {"owner": "h1"}, {"owner": "h2", "percentage": "4.2"},
+        ]}})
+    )
+    h = birdeye.fetch_holder_data(ADDR)
+    assert h.top10_pct is None
+    assert h.top20_pct is None
+    assert h.holder_count == 210000
+
+
+@respx.mock
+def test_requests_carry_key_chain_and_holder_limit(monkeypatch):
+    birdeye = _reload_with_key(monkeypatch, "testkey")
+    overview = respx.get(OVERVIEW).mock(
+        return_value=httpx.Response(200, json=_load("birdeye_overview.json"))
+    )
+    holders = respx.get(HOLDERS).mock(
+        return_value=httpx.Response(200, json=_load("birdeye_holders.json"))
+    )
+    birdeye.fetch_holder_data(ADDR)
+
+    for route in (overview, holders):
+        request = route.calls.last.request
+        assert request.headers["X-API-KEY"] == "testkey"
+        assert request.headers["x-chain"] == "solana"
+
+    holder_request = holders.calls.last.request
+    assert holder_request.url.params["address"] == ADDR
+    assert holder_request.url.params["limit"] == "20"

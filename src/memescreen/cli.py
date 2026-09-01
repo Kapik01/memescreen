@@ -24,10 +24,13 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, ValueError):
-        pass
+    # stderr too: the invalid-address branch echoes the raw argument, which a
+    # stock cp1252 Windows console cannot encode.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
 
     parser = _build_parser()
     args = parser.parse_args(argv)

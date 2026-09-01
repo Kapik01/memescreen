@@ -53,3 +53,9 @@ def test_scan_is_not_available_yet(capsys):
 def test_no_subcommand_returns_2(capsys):
     rc = cli.main([])
     assert rc == 2
+
+
+def test_screen_rejects_non_ascii_bad_address(capsys):
+    rc = cli.main(["screen", "nøt-än-аddress☃"])
+    assert rc == 2
+    assert "address" in capsys.readouterr().err.lower()

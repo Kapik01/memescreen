@@ -2256,6 +2256,14 @@ Deferred to Plan 2 (correctly out of scope here): §3.3 funnel, §5 detector, §
 
 One deviation from the spec, intentional and noted: spec §4 lists `Flag.level` as `"red" | "yellow" | "green"`; this plan adds `"unknown"` so missing-data checks are visible in the report and carry the `SCORE_UNKNOWN_WEIGHT` penalty the spec's §9 already calls for ("Missing data for a check subtracts a small 'unknown' penalty and is noted"). Recorded here so Plan 2 and any spec update stay aligned.
 
+**Further deviations recorded during the final-review fix wave** (see `.superpowers/sdd/2026-08-31-screen-deep-dive-tool/final-review-fixes.md`):
+
+1. **Blind gate on safety-critical checks.** Spec §9 prescribes only the small "unknown" penalty for missing data. `rules.evaluate` additionally refuses `TRADE` outright when any of Liquidity / LP locked / Mint authority / Freeze authority is `unknown` (verdict degrades to `CAUTION`). Without it, a run where DexScreener *or* RugCheck was entirely down still scored ≥ `VERDICT_TRADE_MIN` and printed `TRADE` for a token whose liquidity or mint authority the tool never saw. This matches §9's intent — "AVOID if any RED" presumes the checks actually ran — but it is an evidence gate the spec does not spell out. Tests: `test_dexscreener_down_cannot_trade`, `test_rugcheck_down_cannot_trade`.
+
+2. **Volume/liquidity extreme is YELLOW, not RED.** Spec §9's table puts `>20` / `<0.05` in the RED column; `rules._vol_liq` emits YELLOW (test `test_vol_liq_ratio_extreme_is_yellow_not_red`). Kept as YELLOW deliberately — a ratio extreme is a soft signal, and RED would fire `AVOID` on many legitimately active tokens — but recorded here since it diverges from §9.
+
+3. **Birdeye does not backfill null `MarketData` fields.** Spec §8 says it should. Deferred to Plan 2: the blind gate above makes the missing-market case safe (`CAUTION`, never `TRADE`), and the backfill is scanner-adjacent enrichment better done alongside Plan 2's Birdeye usage. **Plan 2 must not assume this backfill already exists.**
+
 ---
 
 ## Execution Handoff
