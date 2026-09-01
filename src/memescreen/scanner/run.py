@@ -108,6 +108,7 @@ def cycle(store: Store, risk_cache: RiskCache, now: datetime, *, do_seed: bool) 
                 )
             else:
                 log.info("gate: %s dropped (%s)", hit.address[:8], reason)
+                alerter.send_reject(hit, ctx, reason, now)
     except Exception:
         log.exception("cycle failed")
 

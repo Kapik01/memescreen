@@ -234,3 +234,64 @@ def test_discord_configured_needs_the_webhook(monkeypatch):
 
     monkeypatch.setattr(config, "DISCORD_WEBHOOK_URL", "")
     assert alerter.discord_configured() is False
+
+
+# --- send_reject (informational rejects feed) --------------------------
+
+import pytest as _pytest  # noqa: E402
+
+_REJ_HOOK = "https://discord.com/api/webhooks/999/rej-token"
+_REJ_POST = f"{_REJ_HOOK}?wait=true"
+
+
+@_pytest.fixture(autouse=True)
+def _clear_reject_dedup():
+    alerter._reject_seen.clear()
+    yield
+    alerter._reject_seen.clear()
+
+
+@respx.mock
+def test_send_reject_posts_to_the_rejects_webhook(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", _REJ_HOOK)
+    route = respx.post(_REJ_POST).mock(return_value=httpx.Response(200, json=_OK))
+
+    ok = alerter.send_reject(_hit(), _ctx(symbol="TOK"), "holders flat", _NOW)
+
+    assert ok is True
+    assert route.call_count == 1
+    body = json.loads(route.calls.last.request.content)
+    assert "holders flat" in body["content"]
+    assert _ADDR in body["content"]
+    assert "TOK" in body["content"]
+
+
+@respx.mock
+def test_send_reject_noop_when_webhook_unset(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", None)
+    route = respx.post(url__startswith="https://discord.com").mock(
+        return_value=httpx.Response(200, json=_OK)
+    )
+    assert alerter.send_reject(_hit(), _ctx(), "age <30m", _NOW) is False
+    assert route.call_count == 0
+
+
+@respx.mock
+def test_send_reject_deduped_within_cooldown(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", _REJ_HOOK)
+    monkeypatch.setattr(config, "REJECT_COOLDOWN_H", 2.0)
+    route = respx.post(_REJ_POST).mock(return_value=httpx.Response(200, json=_OK))
+
+    assert alerter.send_reject(_hit(), _ctx(), "holders flat", _NOW) is True
+    assert alerter.send_reject(_hit(), _ctx(), "holders flat",
+                               _NOW + timedelta(hours=1)) is False  # still cooling
+    assert alerter.send_reject(_hit(), _ctx(), "holders flat",
+                               _NOW + timedelta(hours=3)) is True   # cooldown passed
+    assert route.call_count == 2
+
+
+@respx.mock
+def test_send_reject_swallows_a_bad_webhook(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", _REJ_HOOK)
+    respx.post(_REJ_POST).mock(return_value=httpx.Response(404))
+    assert alerter.send_reject(_hit(), _ctx(), "rugcheck danger", _NOW) is False
