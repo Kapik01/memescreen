@@ -1,5 +1,5 @@
 """Command-line entry point. `screen <address>` is the Plan 1 deliverable;
-`scan` is a stub until Plan 2."""
+`scan` runs the always-on volume-spike scanner (Plan 2)."""
 from __future__ import annotations
 
 import argparse
@@ -19,7 +19,7 @@ def _build_parser() -> argparse.ArgumentParser:
     screen_p = sub.add_parser("screen", help="due-diligence report for one token")
     screen_p.add_argument("address", help="Solana token mint address")
 
-    sub.add_parser("scan", help="(Plan 2) continuous volume-spike scanner")
+    sub.add_parser("scan", help="continuous volume-spike scanner")
     return parser
 
 
@@ -44,8 +44,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "scan":
-        print("scan is delivered in Plan 2 and is not available yet.", file=sys.stderr)
-        return 2
+        from memescreen.scanner import run
+        return run.main()
 
     parser.print_help(sys.stderr)
     return 2

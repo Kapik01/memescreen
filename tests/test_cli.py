@@ -43,11 +43,17 @@ def test_screen_rejects_bad_address(capsys):
     assert "address" in err.lower()
 
 
-def test_scan_is_not_available_yet(capsys):
-    rc = cli.main(["scan"])
-    err = capsys.readouterr().err
-    assert rc == 2
-    assert "Plan 2" in err
+def test_scan_subcommand_invokes_run(monkeypatch):
+    called = {}
+    import memescreen.scanner.run as run_mod
+
+    def _spy(argv=None):
+        called["hit"] = True
+        return 0
+
+    monkeypatch.setattr(run_mod, "main", _spy)
+    assert cli.main(["scan"]) == 0
+    assert called.get("hit") is True
 
 
 def test_no_subcommand_returns_2(capsys):
