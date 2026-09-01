@@ -1,1 +1,1 @@
-web: python -m memescreen.cli scan
+web: PYTHONPATH=src python -m memescreen.cli scan
