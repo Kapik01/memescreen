@@ -1145,8 +1145,9 @@ def test_maps_overview_and_holders(monkeypatch):
     )
     h = birdeye.fetch_holder_data(ADDR)
     assert h.holder_count == 210000
-    assert round(h.top10_pct, 1) == 18.4
-    assert round(h.top20_pct, 1) == 21.5
+    # fixture: first 10 percentages sum to 17.6, first 20 sum to 21.0
+    assert round(h.top10_pct, 1) == 17.6
+    assert round(h.top20_pct, 1) == 21.0
     assert h.source == "birdeye"
 
 
