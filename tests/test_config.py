@@ -56,10 +56,12 @@ def test_pumpfun_filter_defaults(monkeypatch):
 
 def test_pump_alert_defaults(monkeypatch):
     for k in ("PUMP_PRICE_PCT", "PUMP_MIN_AGE_H", "PUMP_MAX_AGE_H",
-              "PUMP_MIN_LIQUIDITY", "PUMP_MAX_TOP10_PCT", "PUMP_COOLDOWN_H"):
+              "PUMP_MIN_LIQUIDITY", "PUMP_MAX_TOP10_PCT", "PUMP_COOLDOWN_H",
+              "DISCORD_PUMP_WEBHOOK_URL"):
         monkeypatch.setenv(k, "")
     import memescreen.config as config
     importlib.reload(config)
+    assert config.DISCORD_PUMP_WEBHOOK_URL is None
     assert config.PUMP_PRICE_PCT == 20.0
     assert config.PUMP_MIN_AGE_H == 1.0
     assert config.PUMP_MAX_AGE_H == 24.0

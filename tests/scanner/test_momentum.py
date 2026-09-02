@@ -48,8 +48,8 @@ class _Risk:
 
 
 def _rejects_on(monkeypatch):
-    monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL",
-                        "https://discord.com/api/webhooks/1/rej")
+    monkeypatch.setattr(config, "DISCORD_PUMP_WEBHOOK_URL",
+                        "https://discord.com/api/webhooks/1/pump")
 
 
 # --- _top10_pct -------------------------------------------------------------
@@ -99,8 +99,8 @@ def test_cheap_checks_rejects_missing_price_change():
 
 # --- scan ---------------------------------------------------------------
 
-def test_scan_noop_without_rejects_webhook(monkeypatch):
-    monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", None)
+def test_scan_noop_without_pump_webhook(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_PUMP_WEBHOOK_URL", None)
     with Store(":memory:") as s:
         s.append_snapshots([_snap()])
         assert momentum.scan(s, _Risk(_clean_risk()), T0) == 0
