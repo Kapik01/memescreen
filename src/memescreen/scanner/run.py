@@ -90,6 +90,8 @@ def cycle(store: Store, risk_cache: RiskCache, now: datetime, *, do_seed: bool) 
                 "detected %d anomaly hit(s): %s",
                 len(hits), ", ".join(f"{h.address[:8]}(x{h.spike_ratio:.1f})" for h in hits),
             )
+        drops: dict[str, int] = {}
+        passed_n = 0
         for hit in hits:
             snap = _latest_or_none(store, hit.address)
             if snap is None:
@@ -97,10 +99,12 @@ def cycle(store: Store, risk_cache: RiskCache, now: datetime, *, do_seed: bool) 
                 # but spec section 6 requires every hit to reach the table.
                 store.record_hit(hit, passed_gate=False, fail_reason="no snapshot")
                 log.info("gate: %s dropped (no snapshot)", hit.address[:8])
+                drops["no snapshot"] = drops.get("no snapshot", 0) + 1
                 continue
             passed, reason, ctx = filters.evaluate(hit, store, risk_cache, snap)
             ctx.symbol = snap.symbol  # Ruling B -- both the alert and the reject feed use it
             if passed:
+                passed_n += 1
                 sent = alerter.send(hit, ctx, store, now)
                 log.info(
                     "gate: %s PASSED -> alert %s",
@@ -108,7 +112,19 @@ def cycle(store: Store, risk_cache: RiskCache, now: datetime, *, do_seed: bool) 
                 )
             else:
                 log.info("gate: %s dropped (%s)", hit.address[:8], reason)
+                drops[reason] = drops.get(reason, 0) + 1
                 alerter.send_reject(hit, ctx, reason, now)
+        if hits:
+            # One rollup line per cycle so tuning is data-driven: which filter
+            # is actually eating the hits, and how many.
+            tally = ", ".join(
+                f"{r}:{n}" for r, n in sorted(drops.items(), key=lambda kv: -kv[1])
+            )
+            log.info(
+                "cycle summary: detected=%d passed=%d dropped=%d%s",
+                len(hits), passed_n, sum(drops.values()),
+                f" [{tally}]" if tally else "",
+            )
         # NEW PUMP momentum scan: independent of the spike funnel above, walks
         # every tracked token's latest snapshot for a young price run-up.
         momentum.scan(store, risk_cache, now)

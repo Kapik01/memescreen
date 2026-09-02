@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 
 from memescreen import config
 from memescreen.models import AnomalyHit, MarketSnapshot, RiskData
+from memescreen.providers import dexscreener
 from memescreen.providers.base import ProviderError, request_json
 from memescreen.scanner.filters import FilterContext
 from memescreen.scanner.store import Store
@@ -119,6 +120,25 @@ def format_message(hit: AnomalyHit, ctx: FilterContext) -> str:
 # --- delivery ---------------------------------------------------------
 
 
+def _narrative_lines(address: str) -> list[str]:
+    """Best-effort: the token's linked socials (Twitter / Telegram / site) so
+    the alert answers 'why is this moving'. Any failure returns no lines --
+    the alert still goes out, just without the narrative block."""
+    try:
+        md = dexscreener.fetch_market_data(address)
+    except Exception:
+        return []
+    urls = [u for u in (md.socials or []) if u][:6]
+    if not urls:
+        return []
+    return ["", "Narrative — check before entering:"] + [f"  {u}" for u in urls]
+
+
+def _with_narrative(msg: str, address: str) -> str:
+    extra = _narrative_lines(address)
+    return msg + "\n" + "\n".join(extra) if extra else msg
+
+
 def _record_missed(msg: str, now: datetime) -> None:
     os.makedirs(os.path.dirname(MISSED_LOG) or ".", exist_ok=True)
     with open(MISSED_LOG, "a", encoding="utf-8") as fh:
@@ -203,7 +223,7 @@ def send_pump(
         f"https://dexscreener.com/solana/{snap.address}\n"
         f"Run: screen {snap.address}"
     )
-    return _post_discord(config.DISCORD_PUMP_WEBHOOK_URL, line)
+    return _post_discord(config.DISCORD_PUMP_WEBHOOK_URL, _with_narrative(line, snap.address))
 
 
 def send(hit: AnomalyHit, ctx: FilterContext, store: Store, now: datetime) -> bool:
@@ -211,7 +231,7 @@ def send(hit: AnomalyHit, ctx: FilterContext, store: Store, now: datetime) -> bo
     if store.recent_alert(hit.address, now, config.ALERT_COOLDOWN_H):
         return False
 
-    msg = format_message(hit, ctx)
+    msg = _with_narrative(format_message(hit, ctx), hit.address)
 
     if not discord_configured():
         print(msg)
