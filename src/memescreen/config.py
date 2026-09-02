@@ -25,6 +25,17 @@ def _opt_str(key: str) -> str | None:
     return raw.strip() if raw and raw.strip() else None
 
 
+def _int_set(key: str) -> set[int]:
+    """Parse a comma/space separated list of ints from env; ignore junk."""
+    out: set[int] = set()
+    for part in (os.environ.get(key) or "").replace(",", " ").split():
+        try:
+            out.add(int(part))
+        except ValueError:
+            pass
+    return out
+
+
 # --- secrets (never logged) ---
 BIRDEYE_API_KEY: str | None = _opt_str("BIRDEYE_API_KEY")
 HELIUS_API_KEY: str | None = _opt_str("HELIUS_API_KEY")
@@ -35,6 +46,12 @@ DISCORD_REJECTS_WEBHOOK_URL: str | None = _opt_str("DISCORD_REJECTS_WEBHOOK_URL"
 # Optional third webhook -> a #new-pump channel: the NEW PUMP momentum alerts
 # (young token on a price run-up, no safety gate). Blank = they aren't posted.
 DISCORD_PUMP_WEBHOOK_URL: str | None = _opt_str("DISCORD_PUMP_WEBHOOK_URL")
+# Trade-journal bot: a Discord bot token (discord.com/developers). Blank = the
+# journal bot is disabled and `scan` runs without it.
+DISCORD_BOT_TOKEN: str | None = _opt_str("DISCORD_BOT_TOKEN")
+# Optional allowlist of channel IDs the journal bot will act in. Blank = any
+# channel it can see.
+JOURNAL_CHANNEL_IDS: set[int] = _int_set("JOURNAL_CHANNEL_IDS")
 
 # --- data directory (Railway: set DATA_DIR=/data and mount a volume there) ---
 DATA_DIR: str = env("DATA_DIR", "data", str)
@@ -134,3 +151,4 @@ _DATA_DIR = DATA_DIR.rstrip("/\\")
 DB_PATH: str = env("DB_PATH", f"{_DATA_DIR}/memescreen.db", str)
 LOG_PATH: str = env("LOG_PATH", f"{_DATA_DIR}/memescreen.log", str)
 MISSED_LOG_PATH: str = env("MISSED_LOG_PATH", f"{_DATA_DIR}/missed_alerts.log", str)
+JOURNAL_DB_PATH: str = env("JOURNAL_DB_PATH", f"{_DATA_DIR}/journal.db", str)
