@@ -341,10 +341,14 @@ def _pump_snap(**over):
     return _MarketSnapshot(**base)
 
 
+_PUMP_HOOK = "https://discord.com/api/webhooks/777/pump-token"
+_PUMP_POST = f"{_PUMP_HOOK}?wait=true"
+
+
 @respx.mock
 def test_send_pump_posts_the_new_pump_line(monkeypatch):
-    monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", _REJ_HOOK)
-    route = respx.post(_REJ_POST).mock(return_value=httpx.Response(200, json=_OK))
+    monkeypatch.setattr(config, "DISCORD_PUMP_WEBHOOK_URL", _PUMP_HOOK)
+    route = respx.post(_PUMP_POST).mock(return_value=httpx.Response(200, json=_OK))
 
     ok = alerter.send_pump(_pump_snap(), top10_pct=22.0, age_min=185.0, now=_NOW)
 
@@ -359,8 +363,21 @@ def test_send_pump_posts_the_new_pump_line(monkeypatch):
 
 
 @respx.mock
-def test_send_pump_noop_when_rejects_webhook_unset(monkeypatch):
-    monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", None)
+def test_send_pump_noop_when_pump_webhook_unset(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_PUMP_WEBHOOK_URL", None)
+    route = respx.post(url__startswith="https://discord.com").mock(
+        return_value=httpx.Response(200, json=_OK)
+    )
+    assert alerter.send_pump(_pump_snap(), 10.0, 120.0, _NOW) is False
+    assert route.call_count == 0
+
+
+@respx.mock
+def test_send_pump_does_not_use_the_rejects_webhook(monkeypatch):
+    # NEW PUMP has its own channel -- an unset PUMP webhook is a no-op even
+    # when the rejects webhook IS set.
+    monkeypatch.setattr(config, "DISCORD_PUMP_WEBHOOK_URL", None)
+    monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", _REJ_HOOK)
     route = respx.post(url__startswith="https://discord.com").mock(
         return_value=httpx.Response(200, json=_OK)
     )
@@ -370,15 +387,15 @@ def test_send_pump_noop_when_rejects_webhook_unset(monkeypatch):
 
 @respx.mock
 def test_send_pump_false_on_bad_webhook(monkeypatch):
-    monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", _REJ_HOOK)
-    respx.post(_REJ_POST).mock(return_value=httpx.Response(404))
+    monkeypatch.setattr(config, "DISCORD_PUMP_WEBHOOK_URL", _PUMP_HOOK)
+    respx.post(_PUMP_POST).mock(return_value=httpx.Response(404))
     assert alerter.send_pump(_pump_snap(), 10.0, 120.0, _NOW) is False
 
 
 @respx.mock
 def test_send_pump_falls_back_to_address_without_symbol(monkeypatch):
-    monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", _REJ_HOOK)
-    route = respx.post(_REJ_POST).mock(return_value=httpx.Response(200, json=_OK))
+    monkeypatch.setattr(config, "DISCORD_PUMP_WEBHOOK_URL", _PUMP_HOOK)
+    route = respx.post(_PUMP_POST).mock(return_value=httpx.Response(200, json=_OK))
     alerter.send_pump(_pump_snap(symbol=None), 10.0, 120.0, _NOW)
     assert _ADDR[:8] in json.loads(route.calls.last.request.content)["content"]
 

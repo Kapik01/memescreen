@@ -7,9 +7,9 @@ between `PUMP_MIN_AGE_H` and `PUMP_MAX_AGE_H`, 24h volume above market cap,
 liquidity above `PUMP_MIN_LIQUIDITY`, and the top-10 holders (from RugCheck,
 keyless) at or under `PUMP_MAX_TOP10_PCT` of supply.
 
-There is deliberately NO safety gate here -- these alerts go to the
-#scan-rejects channel labelled unvetted. Dedup is one alert per token per
-`PUMP_COOLDOWN_H`, tracked in `pump_alerts_sent`.
+There is deliberately NO safety gate here -- these alerts go to their own
+`DISCORD_PUMP_WEBHOOK_URL` channel labelled unvetted. Dedup is one alert per
+token per `PUMP_COOLDOWN_H`, tracked in `pump_alerts_sent`.
 """
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ def _passes_cheap_checks(snap: MarketSnapshot, now: datetime) -> bool:
 
 def scan(store: Store, risk_cache: RiskCache, now: datetime) -> int:
     """One momentum pass over the tracked universe. Returns alerts sent."""
-    if not alerter.rejects_configured():
+    if not alerter.pump_configured():
         return 0
 
     sent = 0

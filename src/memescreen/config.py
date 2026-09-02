@@ -32,6 +32,9 @@ DISCORD_WEBHOOK_URL: str | None = _opt_str("DISCORD_WEBHOOK_URL")
 # Optional second webhook -> a #scan-rejects channel: every detected spike that
 # the gate filtered out, with the reason. Blank = rejects aren't posted.
 DISCORD_REJECTS_WEBHOOK_URL: str | None = _opt_str("DISCORD_REJECTS_WEBHOOK_URL")
+# Optional third webhook -> a #new-pump channel: the NEW PUMP momentum alerts
+# (young token on a price run-up, no safety gate). Blank = they aren't posted.
+DISCORD_PUMP_WEBHOOK_URL: str | None = _opt_str("DISCORD_PUMP_WEBHOOK_URL")
 
 # --- data directory (Railway: set DATA_DIR=/data and mount a volume there) ---
 DATA_DIR: str = env("DATA_DIR", "data", str)

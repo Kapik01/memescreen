@@ -38,6 +38,11 @@ def rejects_configured() -> bool:
     return bool(config.DISCORD_REJECTS_WEBHOOK_URL)
 
 
+def pump_configured() -> bool:
+    """True when the separate NEW PUMP channel webhook is set."""
+    return bool(config.DISCORD_PUMP_WEBHOOK_URL)
+
+
 # --- formatting helpers -------------------------------------------------
 
 
@@ -179,9 +184,9 @@ def send_pump(
     freshly-polled young token already running -- 1h price up, volume past
     market cap, holders not over-concentrated. No safety gate ran, so the
     line says so. Returns True only on a confirmed send; a no-op (False)
-    when the rejects webhook is unset. Dedup is the caller's job
+    when the NEW PUMP webhook is unset. Dedup is the caller's job
     (`store.recent_pump_alert` / `record_pump_alert`)."""
-    if not rejects_configured():
+    if not pump_configured():
         return False
     sym = snap.symbol or snap.address[:8]
     pct = snap.price_change_h1 or 0.0
@@ -198,7 +203,7 @@ def send_pump(
         f"https://dexscreener.com/solana/{snap.address}\n"
         f"Run: screen {snap.address}"
     )
-    return _post_discord(config.DISCORD_REJECTS_WEBHOOK_URL, line)
+    return _post_discord(config.DISCORD_PUMP_WEBHOOK_URL, line)
 
 
 def send(hit: AnomalyHit, ctx: FilterContext, store: Store, now: datetime) -> bool:
