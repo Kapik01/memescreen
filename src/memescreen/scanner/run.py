@@ -143,6 +143,13 @@ def main(argv: list[str] | None = None) -> int:
 
     build_logger()
     log = logging.getLogger(_LOGGER_NAME)
+    # The co-hosted journal bot logs under "memescreen.journal" -- route it
+    # through the same handlers so its lines land in `railway logs` too.
+    jlog = logging.getLogger("memescreen.journal")
+    jlog.setLevel(logging.INFO)
+    for _h in log.handlers:
+        if _h not in jlog.handlers:
+            jlog.addHandler(_h)
 
     os.makedirs(os.path.dirname(config.DB_PATH) or ".", exist_ok=True)
 
