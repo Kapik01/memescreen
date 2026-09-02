@@ -44,11 +44,24 @@ async def _amain(token: str) -> None:
     @client.event
     async def on_ready() -> None:  # pragma: no cover - needs a live gateway
         _log.info("journal bot online as %s", client.user)
+        for g in client.guilds:
+            chans = ", ".join(
+                f"#{c.name}({c.id})" for c in getattr(g, "text_channels", [])
+            )
+            _log.info("journal in guild %s (%s) -- text channels: %s", g.name, g.id, chans or "none visible")
+        if allow:
+            _log.info("journal channel allowlist active: %s", sorted(allow))
 
     @client.event
     async def on_message(message) -> None:  # pragma: no cover - needs a gateway
         if message.author.bot:
             return  # ignore the webhook alerts themselves and other bots
+        _log.info(
+            "journal saw msg in #%s(%s) from %s: content_len=%d reply=%s",
+            getattr(message.channel, "name", "?"), message.channel.id,
+            message.author, len(message.content or ""),
+            message.reference is not None,
+        )
         if allow and message.channel.id not in allow:
             return
 
@@ -73,7 +86,11 @@ async def _amain(token: str) -> None:
             _log.exception("journal handle() failed")
             return
         if reply is not None:
-            await message.reply(reply.text[:1900], mention_author=False)
+            try:
+                await message.reply(reply.text[:1900], mention_author=False)
+            except Exception:
+                _log.exception("journal could not post reply in #%s(%s)",
+                               getattr(message.channel, "name", "?"), message.channel.id)
 
     await client.start(token)
 
