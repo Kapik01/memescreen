@@ -96,6 +96,39 @@ def test_latest_snapshot_keeps_null_pair_created_at_none():
         assert snap.dex is None and snap.symbol is None
 
 
+def test_latest_snapshot_round_trips_price_change_h1():
+    with Store(":memory:") as s:
+        s.append_snapshots([_snap("m", T0, price_change_h1=42.5)])
+        assert s.latest_snapshot("m").price_change_h1 == 42.5
+
+
+def test_latest_snapshots_returns_newest_row_per_address():
+    with Store(":memory:") as s:
+        s.append_snapshots([
+            _snap("a", T0, vol_m5=1.0),
+            _snap("a", T0 + timedelta(minutes=5), vol_m5=2.0, price_change_h1=30.0),
+            _snap("b", T0 + timedelta(minutes=1), vol_m5=9.0),
+        ])
+        got = {sn.address: sn for sn in s.latest_snapshots()}
+        assert set(got) == {"a", "b"}
+        assert got["a"].vol_m5 == 2.0
+        assert got["a"].price_change_h1 == 30.0
+        assert got["b"].vol_m5 == 9.0
+
+
+def test_latest_snapshots_empty_when_no_history():
+    with Store(":memory:") as s:
+        assert s.latest_snapshots() == []
+
+
+def test_pump_alert_cooldown():
+    with Store(":memory:") as s:
+        assert s.recent_pump_alert("m", now=T0, cooldown_h=3.0) is False
+        s.record_pump_alert("m", now=T0, price_change_h1=25.0)
+        assert s.recent_pump_alert("m", now=T0 + timedelta(hours=1), cooldown_h=3.0) is True
+        assert s.recent_pump_alert("m", now=T0 + timedelta(hours=4), cooldown_h=3.0) is False
+
+
 def test_history_returns_only_the_detector_columns():
     with Store(":memory:") as s:
         s.append_snapshots([_snap("m", T0, pair_created_at=T0 - timedelta(hours=3),

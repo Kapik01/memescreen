@@ -71,6 +71,7 @@ def fetch_market_data(address: str) -> MarketData:
 def _snapshot_from_pair(address: str, pair: dict, fetched_at: datetime) -> MarketSnapshot:
     liquidity = pair.get("liquidity") or {}
     volume = pair.get("volume") or {}
+    price_change = pair.get("priceChange") or {}
     txns_m5 = (pair.get("txns") or {}).get("m5") or {}
     created_ms = pair.get("pairCreatedAt")
     created = (
@@ -93,6 +94,7 @@ def _snapshot_from_pair(address: str, pair: dict, fetched_at: datetime) -> Marke
         sells_m5=int(txns_m5["sells"]) if isinstance(txns_m5.get("sells"), (int, float)) and not isinstance(txns_m5.get("sells"), bool) else None,
         pair_created_at=created,
         dex=pair.get("dexId"),
+        price_change_h1=_to_float(price_change.get("h1")),
     )
 
 

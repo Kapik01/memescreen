@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS token_history (
   vol_m5 REAL, vol_h1 REAL, vol_h6 REAL, vol_h24 REAL,
   buys_m5 INTEGER, sells_m5 INTEGER,
   pair_created_at TEXT, dex TEXT, symbol TEXT,
+  price_change_h1 REAL,
   PRIMARY KEY (address, ts)
 );
 CREATE INDEX IF NOT EXISTS ix_history_addr_ts ON token_history(address, ts);
@@ -31,6 +32,9 @@ CREATE TABLE IF NOT EXISTS hits (
 );
 CREATE TABLE IF NOT EXISTS alerts_sent (
   address TEXT NOT NULL, sent_at TEXT NOT NULL, anomaly_score INTEGER
+);
+CREATE TABLE IF NOT EXISTS pump_alerts_sent (
+  address TEXT NOT NULL, sent_at TEXT NOT NULL, price_change_h1 REAL
 );
 CREATE TABLE IF NOT EXISTS hit_context (
   address TEXT PRIMARY KEY, first_seen_at TEXT NOT NULL,
@@ -49,9 +53,13 @@ _HISTORY_COLUMNS = (
 # the parsed `datetime` ts -- the detector reads none of those three.
 _HISTORY_READ_COLUMNS = ("address", "ts") + _HISTORY_COLUMNS
 
-# Added after the original 11-column token_history shipped; existing databases
-# are migrated in place by Store.__init__.
-_HISTORY_ADDED_COLUMNS = ("pair_created_at", "dex", "symbol")
+# (name, sqlite type) for columns added after the original 11-column
+# token_history shipped; existing databases are migrated in place by
+# Store.__init__.
+_HISTORY_ADDED_COLUMNS = (
+    ("pair_created_at", "TEXT"), ("dex", "TEXT"), ("symbol", "TEXT"),
+    ("price_change_h1", "REAL"),
+)
 
 
 class Store:
@@ -73,9 +81,11 @@ class Store:
         when `PRAGMA table_info` says it is missing.
         """
         existing = {r[1] for r in self._conn.execute("PRAGMA table_info(token_history)")}
-        for col in _HISTORY_ADDED_COLUMNS:
+        for col, col_type in _HISTORY_ADDED_COLUMNS:
             if col not in existing:
-                self._conn.execute(f"ALTER TABLE token_history ADD COLUMN {col} TEXT")
+                self._conn.execute(
+                    f"ALTER TABLE token_history ADD COLUMN {col} {col_type}"
+                )
         self._conn.commit()
 
     def close(self) -> None:
@@ -97,7 +107,7 @@ class Store:
                 snap.vol_m5, snap.vol_h1, snap.vol_h6, snap.vol_h24,
                 snap.buys_m5, snap.sells_m5,
                 snap.pair_created_at.isoformat() if snap.pair_created_at is not None else None,
-                snap.dex, snap.symbol,
+                snap.dex, snap.symbol, snap.price_change_h1,
             )
             for snap in snaps
         ]
@@ -107,8 +117,8 @@ class Store:
             "INSERT OR REPLACE INTO token_history "
             "(address, ts, price_usd, liquidity_usd, market_cap_usd, "
             "vol_m5, vol_h1, vol_h6, vol_h24, buys_m5, sells_m5, "
-            "pair_created_at, dex, symbol) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "pair_created_at, dex, symbol, price_change_h1) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
         self._conn.commit()
@@ -136,16 +146,8 @@ class Store:
             return None
         return datetime.fromisoformat(row["ts"])
 
-    def latest_snapshot(self, address: str) -> MarketSnapshot | None:
-        cur = self._conn.execute(
-            "SELECT * FROM token_history WHERE address = ? "
-            "ORDER BY ts DESC LIMIT 1",
-            (address,),
-        )
-        row = cur.fetchone()
-        if row is None:
-            return None
-        d = dict(row)
+    @staticmethod
+    def _snapshot_from_row(d: dict) -> MarketSnapshot:
         return MarketSnapshot(
             address=d["address"],
             fetched_at=datetime.fromisoformat(d["ts"]),
@@ -164,8 +166,31 @@ class Store:
                 if d["pair_created_at"]
                 else None
             ),
+            price_change_h1=d["price_change_h1"],
             dex=d["dex"],
         )
+
+    def latest_snapshot(self, address: str) -> MarketSnapshot | None:
+        cur = self._conn.execute(
+            "SELECT * FROM token_history WHERE address = ? "
+            "ORDER BY ts DESC LIMIT 1",
+            (address,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return self._snapshot_from_row(dict(row))
+
+    def latest_snapshots(self) -> list[MarketSnapshot]:
+        """The newest `token_history` row for every address, one per token.
+        Used by the NEW PUMP momentum scan, which checks the whole tracked
+        universe each cycle rather than only the detector's hits."""
+        cur = self._conn.execute(
+            "SELECT th.* FROM token_history th "
+            "JOIN (SELECT address, MAX(ts) AS mx FROM token_history GROUP BY address) m "
+            "ON th.address = m.address AND th.ts = m.mx"
+        )
+        return [self._snapshot_from_row(dict(row)) for row in cur.fetchall()]
 
     def prune_history(self, now: datetime) -> int:
         cutoff = (now - timedelta(hours=config.HISTORY_RETENTION_H)).isoformat()
@@ -264,6 +289,23 @@ class Store:
         self._conn.execute(
             "INSERT INTO alerts_sent (address, sent_at, anomaly_score) VALUES (?, ?, ?)",
             (address, now.isoformat(), anomaly_score),
+        )
+        self._conn.commit()
+
+    # --- pump_alerts_sent (NEW PUMP momentum alert dedup) ---
+
+    def recent_pump_alert(self, address: str, now: datetime, cooldown_h: float) -> bool:
+        cutoff = (now - timedelta(hours=cooldown_h)).isoformat()
+        cur = self._conn.execute(
+            "SELECT 1 FROM pump_alerts_sent WHERE address = ? AND sent_at >= ? LIMIT 1",
+            (address, cutoff),
+        )
+        return cur.fetchone() is not None
+
+    def record_pump_alert(self, address: str, now: datetime, price_change_h1: float | None) -> None:
+        self._conn.execute(
+            "INSERT INTO pump_alerts_sent (address, sent_at, price_change_h1) VALUES (?, ?, ?)",
+            (address, now.isoformat(), price_change_h1),
         )
         self._conn.commit()
 

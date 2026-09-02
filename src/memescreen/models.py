@@ -88,6 +88,7 @@ class MarketSnapshot:
     sells_m5: int | None = None
     pair_created_at: datetime | None = None
     dex: str | None = None
+    price_change_h1: float | None = None  # DexScreener priceChange.h1, percent
 
 
 @dataclass

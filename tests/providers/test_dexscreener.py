@@ -90,6 +90,39 @@ def test_fetch_snapshots_groups_and_picks_primary_pair():
 
 
 @respx.mock
+def test_fetch_snapshots_maps_price_change_h1():
+    pair = {
+        "chainId": "solana", "dexId": "raydium", "pairAddress": "p",
+        "baseToken": {"address": "C" * 44, "symbol": "CCC", "name": "Ccc"},
+        "priceUsd": "0.002", "liquidity": {"usd": 40000.0},
+        "volume": {"m5": 100.0, "h1": 2000.0, "h6": 9000.0, "h24": 300000.0},
+        "txns": {"m5": {"buys": 3, "sells": 1}},
+        "priceChange": {"m5": 1.0, "h1": 27.4, "h24": 55.0},
+        "marketCap": 120000.0, "pairCreatedAt": 1722470400000,
+    }
+    respx.get(url__regex=r"https://api\.dexscreener\.com/tokens/v1/solana/.+").mock(
+        return_value=httpx.Response(200, json=[pair])
+    )
+    out = fetch_snapshots(["C" * 44])
+    assert out["C" * 44].price_change_h1 == 27.4
+
+
+@respx.mock
+def test_fetch_snapshots_price_change_h1_none_when_absent():
+    pair = {
+        "chainId": "solana", "dexId": "raydium", "pairAddress": "p",
+        "baseToken": {"address": "D" * 44, "symbol": "DDD", "name": "Ddd"},
+        "priceUsd": "0.002", "liquidity": {"usd": 40000.0},
+        "volume": {"h24": 300000.0}, "txns": {"m5": {"buys": 3, "sells": 1}},
+        "marketCap": 120000.0,
+    }
+    respx.get(url__regex=r"https://api\.dexscreener\.com/tokens/v1/solana/.+").mock(
+        return_value=httpx.Response(200, json=[pair])
+    )
+    assert fetch_snapshots(["D" * 44])["D" * 44].price_change_h1 is None
+
+
+@respx.mock
 def test_fetch_snapshots_chunks_by_batch_size(monkeypatch):
     from memescreen import config
     monkeypatch.setattr(config, "BATCH_SIZE", 2)

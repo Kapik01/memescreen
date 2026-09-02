@@ -13,7 +13,7 @@ import os
 from datetime import datetime, timedelta
 
 from memescreen import config
-from memescreen.models import AnomalyHit, RiskData
+from memescreen.models import AnomalyHit, MarketSnapshot, RiskData
 from memescreen.providers.base import ProviderError, request_json
 from memescreen.scanner.filters import FilterContext
 from memescreen.scanner.store import Store
@@ -168,6 +168,35 @@ def send_reject(
         f"·  dropped: {reason}\n"
         f"{hit.address}\n"
         f"https://dexscreener.com/solana/{hit.address}"
+    )
+    return _post_discord(config.DISCORD_REJECTS_WEBHOOK_URL, line)
+
+
+def send_pump(
+    snap: MarketSnapshot, top10_pct: float, age_min: float, now: datetime
+) -> bool:
+    """Post a NEW PUMP momentum alert to the rejects channel. This is a
+    freshly-polled young token already running -- 1h price up, volume past
+    market cap, holders not over-concentrated. No safety gate ran, so the
+    line says so. Returns True only on a confirmed send; a no-op (False)
+    when the rejects webhook is unset. Dedup is the caller's job
+    (`store.recent_pump_alert` / `record_pump_alert`)."""
+    if not rejects_configured():
+        return False
+    sym = snap.symbol or snap.address[:8]
+    pct = snap.price_change_h1 or 0.0
+    vol_mcap = (
+        snap.vol_h24 / snap.market_cap_usd
+        if snap.vol_h24 is not None and snap.market_cap_usd
+        else 0.0
+    )
+    line = (
+        f"\U0001f4c8 NEW PUMP — ${sym}   +{pct:.0f}% 1h  ·  age {_age(age_min)}  ·  "
+        f"vol/mcap {vol_mcap:.1f}x  ·  top10 {top10_pct:.0f}%  ·  liq {_money(snap.liquidity_usd)}\n"
+        f"unvetted — no safety gate ran, DYOR\n"
+        f"{snap.address}\n"
+        f"https://dexscreener.com/solana/{snap.address}\n"
+        f"Run: screen {snap.address}"
     )
     return _post_discord(config.DISCORD_REJECTS_WEBHOOK_URL, line)
 
