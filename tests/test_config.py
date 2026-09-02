@@ -35,6 +35,15 @@ def test_discord_webhook_unset_by_default(monkeypatch):
     assert config.DISCORD_WEBHOOK_URL is None
 
 
+def test_reject_feed_defaults(monkeypatch):
+    monkeypatch.setenv("DISCORD_REJECTS_WEBHOOK_URL", "")
+    monkeypatch.setenv("REJECT_COOLDOWN_H", "")
+    import memescreen.config as config
+    importlib.reload(config)
+    assert config.DISCORD_REJECTS_WEBHOOK_URL is None
+    assert config.REJECT_COOLDOWN_H == 2.0
+
+
 def test_pumpfun_filter_defaults(monkeypatch):
     for k in ("PUMPFUN_BASE", "PUMPFUN_MAX_COINS", "PUMPFUN_COUNT_LIMIT"):
         monkeypatch.setenv(k, "")

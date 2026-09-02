@@ -64,6 +64,63 @@ def test_cycle_records_a_hit_with_no_snapshot(monkeypatch):
     assert (row["passed_gate"], row["fail_reason"]) == (0, "no snapshot")
 
 
+def test_cycle_posts_dropped_hits_to_the_rejects_feed(monkeypatch):
+    hit = AnomalyHit(
+        address="m", detected_at=T0, spike_ratio=9.0, accel=3.0, buy_ratio=0.7,
+        buys_m5=20, vol_m5=9000.0, vol_h1=60000.0, liq_now=60000.0,
+        liq_change=1.0, first_seen_at=T0, anomaly_score=60,
+    )
+    snap = MarketSnapshot(address="m", fetched_at=T0, symbol="M", dex="raydium")
+    rejects = []
+    monkeypatch.setattr(run.universe, "seed", lambda s, now: 0)
+    monkeypatch.setattr(run.poller, "poll_once", lambda s, now: 1)
+    monkeypatch.setattr(run.detector, "detect_all", lambda s, now: [hit])
+    monkeypatch.setattr(run, "_latest_or_none", lambda s, a: snap)
+    monkeypatch.setattr(
+        run.filters, "evaluate",
+        lambda h, s, rc, sn: (False, "holders flat", run.filters.FilterContext(
+            risk=None, holders=None, holder_growth=1, age_min=60.0, dex="raydium")),
+    )
+    monkeypatch.setattr(
+        run.alerter, "send_reject",
+        lambda h, ctx, reason, now: rejects.append((h.address, reason)) or True,
+    )
+
+    with Store(":memory:") as s:
+        run.cycle(s, RiskCache(fetch=lambda a: None), T0, do_seed=False)
+
+    assert rejects == [("m", "holders flat")]
+
+
+def test_cycle_does_not_post_a_reject_when_the_gate_passes(monkeypatch):
+    hit = AnomalyHit(
+        address="m", detected_at=T0, spike_ratio=20.0, accel=5.0, buy_ratio=0.9,
+        buys_m5=50, vol_m5=9000.0, vol_h1=60000.0, liq_now=60000.0,
+        liq_change=1.0, first_seen_at=T0, anomaly_score=88,
+    )
+    snap = MarketSnapshot(address="m", fetched_at=T0, symbol="M", dex="raydium")
+    rejects = []
+    monkeypatch.setattr(run.universe, "seed", lambda s, now: 0)
+    monkeypatch.setattr(run.poller, "poll_once", lambda s, now: 1)
+    monkeypatch.setattr(run.detector, "detect_all", lambda s, now: [hit])
+    monkeypatch.setattr(run, "_latest_or_none", lambda s, a: snap)
+    monkeypatch.setattr(
+        run.filters, "evaluate",
+        lambda h, s, rc, sn: (True, "", run.filters.FilterContext(
+            risk=None, holders=None, holder_growth=99, age_min=60.0, dex="raydium")),
+    )
+    monkeypatch.setattr(run.alerter, "send", lambda h, ctx, s, now: True)
+    monkeypatch.setattr(
+        run.alerter, "send_reject",
+        lambda h, ctx, reason, now: rejects.append(h.address) or True,
+    )
+
+    with Store(":memory:") as s:
+        run.cycle(s, RiskCache(fetch=lambda a: None), T0, do_seed=False)
+
+    assert rejects == []
+
+
 # --- cadence -------------------------------------------------------------
 
 def test_advance_skips_missed_slots_instead_of_accumulating():

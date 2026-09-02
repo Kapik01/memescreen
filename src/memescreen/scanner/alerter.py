@@ -10,7 +10,7 @@ and suppresses a later retry.
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from memescreen import config
 from memescreen.models import AnomalyHit, RiskData
@@ -23,10 +23,19 @@ MISSED_LOG = config.MISSED_LOG_PATH
 # Discord truncates `content` at 2000 chars; leave headroom for the code fence.
 _CONTENT_MAX = 1900
 
+# Per-process dedup for the (informational) rejects feed: {address: last posted}.
+# Cleared on restart, which is fine -- a missed reject is nothing.
+_reject_seen: dict[str, datetime] = {}
+
 
 def discord_configured() -> bool:
-    """True only when the Discord webhook URL is set (read at call time)."""
+    """True only when the main Discord webhook URL is set (read at call time)."""
     return bool(config.DISCORD_WEBHOOK_URL)
+
+
+def rejects_configured() -> bool:
+    """True when the separate rejects-channel webhook is set."""
+    return bool(config.DISCORD_REJECTS_WEBHOOK_URL)
 
 
 # --- formatting helpers -------------------------------------------------
@@ -112,12 +121,55 @@ def _record_missed(msg: str, now: datetime) -> None:
         fh.write(msg + "\n")
 
 
-def _webhook_url() -> str:
-    """Webhook with `?wait=true` so Discord answers 200 + a JSON body on
-    success instead of a bodyless 204 (which `request_json` would reject)."""
-    url = config.DISCORD_WEBHOOK_URL or ""
+def _wait_url(url: str) -> str:
+    """Append `?wait=true` so Discord answers 200 + a JSON body on success
+    instead of a bodyless 204 (which `request_json` would reject)."""
+    url = url or ""
     sep = "&" if "?" in url else "?"
     return f"{url}{sep}wait=true"
+
+
+def _post_discord(url: str, content: str) -> bool:
+    """POST one code-fenced message to a Discord webhook. True only on a
+    confirmed send (200 + a body carrying an `id`)."""
+    try:
+        resp = request_json(
+            "discord", "POST", _wait_url(url),
+            json_body={"content": "```\n" + content[:_CONTENT_MAX] + "\n```"},
+        )
+    except ProviderError:
+        return False
+    return isinstance(resp, dict) and bool(resp.get("id"))
+
+
+def send_reject(
+    hit: AnomalyHit, ctx: FilterContext, reason: str, now: datetime
+) -> bool:
+    """Post a detected-but-filtered hit to the rejects channel. Deduped per
+    token by `REJECT_COOLDOWN_H`. No-op (returns False) when the rejects
+    webhook is unset -- this feed is purely informational."""
+    if not rejects_configured():
+        return False
+    window = timedelta(hours=config.REJECT_COOLDOWN_H)
+    # Drop entries that can no longer suppress anything (keeps the dict bounded
+    # to "tokens rejected in the last cooldown window").
+    for addr in [a for a, t in _reject_seen.items() if now - t >= window]:
+        del _reject_seen[addr]
+    last = _reject_seen.get(hit.address)
+    if last is not None and now - last < window:
+        return False
+    # Set before the POST: a transiently-down webhook must not be re-hit every
+    # 60s. A missed reject is nothing (this feed is informational).
+    _reject_seen[hit.address] = now
+
+    sym = ctx.symbol or hit.address[:8]
+    line = (
+        f"❌ {sym}  spike {hit.spike_ratio:.1f}x / {hit.buys_m5} buys  "
+        f"·  dropped: {reason}\n"
+        f"{hit.address}\n"
+        f"https://dexscreener.com/solana/{hit.address}"
+    )
+    return _post_discord(config.DISCORD_REJECTS_WEBHOOK_URL, line)
 
 
 def send(hit: AnomalyHit, ctx: FilterContext, store: Store, now: datetime) -> bool:
@@ -132,24 +184,10 @@ def send(hit: AnomalyHit, ctx: FilterContext, store: Store, now: datetime) -> bo
         _record_missed(msg, now)
         return False
 
-    content = "```\n" + msg[:_CONTENT_MAX] + "\n```"
-    try:
-        resp = request_json(
-            "discord",
-            "POST",
-            _webhook_url(),
-            json_body={"content": content},
-        )
-    except ProviderError:
-        # Bad/deleted webhook -> 4xx, exhausted retries -> ProviderError.
-        print(msg)
-        _record_missed(msg, now)
-        return False
-
-    # With `?wait=true` a success is 200 + the created-message object (a dict
-    # with an "id"). Anything else -- a proxy returning a list, an empty body
-    # slipping through -- is not a confirmed delivery.
-    if not (isinstance(resp, dict) and resp.get("id")):
+    # A bad/deleted webhook (4xx), exhausted retries, or a body without an `id`
+    # are all "not delivered" -> fall back, and do NOT record, so a later cycle
+    # retries instead of the 6h cooldown suppressing it.
+    if not _post_discord(config.DISCORD_WEBHOOK_URL, msg):
         print(msg)
         _record_missed(msg, now)
         return False

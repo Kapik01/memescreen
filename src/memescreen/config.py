@@ -29,6 +29,9 @@ def _opt_str(key: str) -> str | None:
 BIRDEYE_API_KEY: str | None = _opt_str("BIRDEYE_API_KEY")
 HELIUS_API_KEY: str | None = _opt_str("HELIUS_API_KEY")
 DISCORD_WEBHOOK_URL: str | None = _opt_str("DISCORD_WEBHOOK_URL")
+# Optional second webhook -> a #scan-rejects channel: every detected spike that
+# the gate filtered out, with the reason. Blank = rejects aren't posted.
+DISCORD_REJECTS_WEBHOOK_URL: str | None = _opt_str("DISCORD_REJECTS_WEBHOOK_URL")
 
 # --- data directory (Railway: set DATA_DIR=/data and mount a volume there) ---
 DATA_DIR: str = env("DATA_DIR", "data", str)
@@ -105,6 +108,7 @@ POLL_INTERVAL_SEC: int = env("POLL_INTERVAL_SEC", 60, int)
 SEED_INTERVAL_SEC: int = env("SEED_INTERVAL_SEC", 180, int)
 UNIVERSE_CAP: int = env("UNIVERSE_CAP", 1500, int)
 ALERT_COOLDOWN_H: float = env("ALERT_COOLDOWN_H", 6.0, float)
+REJECT_COOLDOWN_H: float = env("REJECT_COOLDOWN_H", 2.0, float)
 HISTORY_RETENTION_H: float = env("HISTORY_RETENTION_H", 3.0, float)
 RISK_CACHE_TTL_H: float = env("RISK_CACHE_TTL_H", 6.0, float)
 BATCH_SIZE: int = env("BATCH_SIZE", 30, int)

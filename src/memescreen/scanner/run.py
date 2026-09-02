@@ -99,8 +99,8 @@ def cycle(store: Store, risk_cache: RiskCache, now: datetime, *, do_seed: bool) 
                 log.info("gate: %s dropped (no snapshot)", hit.address[:8])
                 continue
             passed, reason, ctx = filters.evaluate(hit, store, risk_cache, snap)
+            ctx.symbol = snap.symbol  # Ruling B -- both the alert and the reject feed use it
             if passed:
-                ctx.symbol = snap.symbol  # Ruling B
                 sent = alerter.send(hit, ctx, store, now)
                 log.info(
                     "gate: %s PASSED -> alert %s",
@@ -108,6 +108,7 @@ def cycle(store: Store, risk_cache: RiskCache, now: datetime, *, do_seed: bool) 
                 )
             else:
                 log.info("gate: %s dropped (%s)", hit.address[:8], reason)
+                alerter.send_reject(hit, ctx, reason, now)
     except Exception:
         log.exception("cycle failed")
 
