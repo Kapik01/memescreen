@@ -103,6 +103,17 @@ PUMPFUN_MAX_COINS: int = min(
     env("PUMPFUN_MAX_COINS", 20, int), PUMPFUN_COUNT_LIMIT
 )
 
+# --- scanner: NEW PUMP momentum alert (price run-up on a young token) ---
+# A separate, lighter signal from the volume-spike funnel: a freshly-polled
+# token that is already running. Posts to the #scan-rejects channel and has
+# NO safety gate -- the alert is labelled unvetted on purpose.
+PUMP_PRICE_PCT: float = env("PUMP_PRICE_PCT", 20.0, float)      # min 1h price change, %
+PUMP_MIN_AGE_H: float = env("PUMP_MIN_AGE_H", 1.0, float)       # must be at least this old
+PUMP_MAX_AGE_H: float = env("PUMP_MAX_AGE_H", 24.0, float)      # ...and no older than this
+PUMP_MIN_LIQUIDITY: float = env("PUMP_MIN_LIQUIDITY", 10_000.0, float)
+PUMP_MAX_TOP10_PCT: float = env("PUMP_MAX_TOP10_PCT", 30.0, float)  # top-10 holders cap, %
+PUMP_COOLDOWN_H: float = env("PUMP_COOLDOWN_H", 3.0, float)     # one alert per token per window
+
 # --- scanner: ops (spec §10, §12) ---
 POLL_INTERVAL_SEC: int = env("POLL_INTERVAL_SEC", 60, int)
 SEED_INTERVAL_SEC: int = env("SEED_INTERVAL_SEC", 180, int)

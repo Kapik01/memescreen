@@ -54,6 +54,20 @@ def test_pumpfun_filter_defaults(monkeypatch):
     assert config.PUMPFUN_COUNT_LIMIT == 50
 
 
+def test_pump_alert_defaults(monkeypatch):
+    for k in ("PUMP_PRICE_PCT", "PUMP_MIN_AGE_H", "PUMP_MAX_AGE_H",
+              "PUMP_MIN_LIQUIDITY", "PUMP_MAX_TOP10_PCT", "PUMP_COOLDOWN_H"):
+        monkeypatch.setenv(k, "")
+    import memescreen.config as config
+    importlib.reload(config)
+    assert config.PUMP_PRICE_PCT == 20.0
+    assert config.PUMP_MIN_AGE_H == 1.0
+    assert config.PUMP_MAX_AGE_H == 24.0
+    assert config.PUMP_MIN_LIQUIDITY == 10_000.0
+    assert config.PUMP_MAX_TOP10_PCT == 30.0
+    assert config.PUMP_COOLDOWN_H == 3.0
+
+
 def test_data_dir_default_and_derived_paths(monkeypatch):
     # setenv("") not delenv: reload() re-runs load_dotenv() and would otherwise
     # pick these up from a developer's real .env.

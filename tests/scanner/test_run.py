@@ -21,6 +21,17 @@ def test_cycle_runs_seed_poll_detect_without_error(monkeypatch):
         run.cycle(s, RiskCache(fetch=lambda a: None), T0, do_seed=True)  # no raise
 
 
+def test_cycle_runs_the_momentum_scan(monkeypatch):
+    calls = []
+    monkeypatch.setattr(run.universe, "seed", lambda s, now: 0)
+    monkeypatch.setattr(run.poller, "poll_once", lambda s, now: 0)
+    monkeypatch.setattr(run.detector, "detect_all", lambda s, now: [])
+    monkeypatch.setattr(run.momentum, "scan", lambda s, rc, now: calls.append(now) or 0)
+    with Store(":memory:") as s:
+        run.cycle(s, RiskCache(fetch=lambda a: None), T0, do_seed=False)
+    assert calls == [T0]
+
+
 def test_cycle_swallows_a_failing_step(monkeypatch, caplog):
     def _boom(s, now):
         raise RuntimeError("boom")

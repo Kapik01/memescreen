@@ -15,7 +15,7 @@ import time
 from datetime import UTC, datetime
 
 from memescreen import config
-from memescreen.scanner import alerter, detector, filters, poller, universe
+from memescreen.scanner import alerter, detector, filters, momentum, poller, universe
 from memescreen.scanner.riskcache import RiskCache
 from memescreen.scanner.store import Store
 
@@ -109,6 +109,9 @@ def cycle(store: Store, risk_cache: RiskCache, now: datetime, *, do_seed: bool) 
             else:
                 log.info("gate: %s dropped (%s)", hit.address[:8], reason)
                 alerter.send_reject(hit, ctx, reason, now)
+        # NEW PUMP momentum scan: independent of the spike funnel above, walks
+        # every tracked token's latest snapshot for a young price run-up.
+        momentum.scan(store, risk_cache, now)
     except Exception:
         log.exception("cycle failed")
 

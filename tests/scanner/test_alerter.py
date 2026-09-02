@@ -328,6 +328,61 @@ def test_send_reject_failed_post_still_burns_the_dedup_window(monkeypatch):
                                _NOW + timedelta(minutes=30)) is False
 
 
+from memescreen.models import MarketSnapshot as _MarketSnapshot  # noqa: E402
+
+
+def _pump_snap(**over):
+    base = dict(
+        address=_ADDR, fetched_at=_NOW, symbol="RUN",
+        liquidity_usd=61_000.0, market_cap_usd=100_000.0, vol_h24=180_000.0,
+        pair_created_at=_NOW - timedelta(hours=3), price_change_h1=24.0, dex="raydium",
+    )
+    base.update(over)
+    return _MarketSnapshot(**base)
+
+
+@respx.mock
+def test_send_pump_posts_the_new_pump_line(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", _REJ_HOOK)
+    route = respx.post(_REJ_POST).mock(return_value=httpx.Response(200, json=_OK))
+
+    ok = alerter.send_pump(_pump_snap(), top10_pct=22.0, age_min=185.0, now=_NOW)
+
+    assert ok is True
+    body = json.loads(route.calls.last.request.content)
+    assert "NEW PUMP" in body["content"]
+    assert "$RUN" in body["content"]
+    assert "+24% 1h" in body["content"]
+    assert "top10 22%" in body["content"]
+    assert "vol/mcap 1.8x" in body["content"]
+    assert _ADDR in body["content"]
+
+
+@respx.mock
+def test_send_pump_noop_when_rejects_webhook_unset(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", None)
+    route = respx.post(url__startswith="https://discord.com").mock(
+        return_value=httpx.Response(200, json=_OK)
+    )
+    assert alerter.send_pump(_pump_snap(), 10.0, 120.0, _NOW) is False
+    assert route.call_count == 0
+
+
+@respx.mock
+def test_send_pump_false_on_bad_webhook(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", _REJ_HOOK)
+    respx.post(_REJ_POST).mock(return_value=httpx.Response(404))
+    assert alerter.send_pump(_pump_snap(), 10.0, 120.0, _NOW) is False
+
+
+@respx.mock
+def test_send_pump_falls_back_to_address_without_symbol(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", _REJ_HOOK)
+    route = respx.post(_REJ_POST).mock(return_value=httpx.Response(200, json=_OK))
+    alerter.send_pump(_pump_snap(symbol=None), 10.0, 120.0, _NOW)
+    assert _ADDR[:8] in json.loads(route.calls.last.request.content)["content"]
+
+
 def test_reject_seen_is_pruned_after_the_cooldown_window(monkeypatch):
     monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", None)  # no-op posts
     monkeypatch.setattr(config, "REJECT_COOLDOWN_H", 2.0)
