@@ -2,10 +2,11 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import httpx
+import pytest
 import respx
 
 from memescreen import config
-from memescreen.models import AnomalyHit, HolderData, RiskData
+from memescreen.models import AnomalyHit, HolderData, MarketData, RiskData
 from memescreen.scanner import alerter
 from memescreen.scanner.filters import FilterContext
 from memescreen.scanner.store import Store
@@ -14,6 +15,21 @@ _ADDR = "So11111111111111111111111111111111111111112"
 _NOW = datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
 _WEBHOOK = "https://discord.com/api/webhooks/123456789/abcDEF-token"
 _POST_URL = f"{_WEBHOOK}?wait=true"
+
+
+def _market(socials=()) -> MarketData:
+    return MarketData(
+        name="X", symbol="X", price_usd=1.0, liquidity_usd=1.0,
+        volume_24h_usd=1.0, market_cap_usd=1.0, pair_created_at=None, dex="raydium",
+        socials=list(socials),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _stub_narrative(monkeypatch):
+    """Default: no linked socials, no network. Individual tests override."""
+    monkeypatch.setattr(alerter.dexscreener, "fetch_market_data",
+                        lambda addr: _market(()))
 
 
 def _hit(**over) -> AnomalyHit:
@@ -127,6 +143,37 @@ def test_send_happy_path_posts_and_records(monkeypatch):
     assert "content" in body and _ADDR in body["content"]
     assert body["content"].startswith("```") and body["content"].endswith("```")
     assert store.recent_alert(_ADDR, _NOW + timedelta(minutes=1), config.ALERT_COOLDOWN_H) is True
+
+
+@respx.mock
+def test_send_appends_narrative_socials(monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(
+        alerter.dexscreener, "fetch_market_data",
+        lambda addr: _market(("https://x.com/thecoin", "https://t.me/thecoin")),
+    )
+    route = respx.post(_POST_URL).mock(return_value=httpx.Response(200, json=_OK))
+    store = Store()
+
+    alerter.send(_hit(), _ctx(), store, _NOW)
+
+    body = json.loads(route.calls.last.request.content)["content"]
+    assert "Narrative" in body
+    assert "https://x.com/thecoin" in body
+    assert "https://t.me/thecoin" in body
+
+
+@respx.mock
+def test_send_still_delivers_when_narrative_lookup_fails(monkeypatch):
+    _configure(monkeypatch)
+    def _boom(addr):
+        raise RuntimeError("dexscreener down")
+    monkeypatch.setattr(alerter.dexscreener, "fetch_market_data", _boom)
+    route = respx.post(_POST_URL).mock(return_value=httpx.Response(200, json=_OK))
+    store = Store()
+
+    assert alerter.send(_hit(), _ctx(), store, _NOW) is True
+    assert "Narrative" not in json.loads(route.calls.last.request.content)["content"]
 
 
 @respx.mock
@@ -383,6 +430,18 @@ def test_send_pump_does_not_use_the_rejects_webhook(monkeypatch):
     )
     assert alerter.send_pump(_pump_snap(), 10.0, 120.0, _NOW) is False
     assert route.call_count == 0
+
+
+@respx.mock
+def test_send_pump_appends_narrative_socials(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_PUMP_WEBHOOK_URL", _PUMP_HOOK)
+    monkeypatch.setattr(
+        alerter.dexscreener, "fetch_market_data",
+        lambda addr: _market(("https://x.com/runner",)),
+    )
+    route = respx.post(_PUMP_POST).mock(return_value=httpx.Response(200, json=_OK))
+    alerter.send_pump(_pump_snap(), 22.0, 185.0, _NOW)
+    assert "https://x.com/runner" in json.loads(route.calls.last.request.content)["content"]
 
 
 @respx.mock

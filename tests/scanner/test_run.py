@@ -103,6 +103,36 @@ def test_cycle_posts_dropped_hits_to_the_rejects_feed(monkeypatch):
     assert rejects == [("m", "holders flat")]
 
 
+def test_cycle_logs_a_drop_reason_tally(monkeypatch, caplog):
+    hits = [
+        AnomalyHit(address=a, detected_at=T0, spike_ratio=9.0, accel=3.0, buy_ratio=0.7,
+                   buys_m5=20, vol_m5=9000.0, vol_h1=60000.0, liq_now=60000.0,
+                   liq_change=1.0, first_seen_at=T0, anomaly_score=60)
+        for a in ("aa", "bb", "cc")
+    ]
+    snap = MarketSnapshot(address="x", fetched_at=T0, symbol="X", dex="raydium")
+    reasons = {"aa": "LP not locked", "bb": "LP not locked", "cc": "age <60m"}
+    monkeypatch.setattr(run.universe, "seed", lambda s, now: 0)
+    monkeypatch.setattr(run.poller, "poll_once", lambda s, now: 1)
+    monkeypatch.setattr(run.detector, "detect_all", lambda s, now: hits)
+    monkeypatch.setattr(run, "_latest_or_none", lambda s, a: snap)
+    monkeypatch.setattr(run.momentum, "scan", lambda s, rc, now: 0)
+    monkeypatch.setattr(
+        run.filters, "evaluate",
+        lambda h, s, rc, sn: (False, reasons[h.address], run.filters.FilterContext(
+            risk=None, holders=None, holder_growth=1, age_min=60.0, dex="raydium")),
+    )
+    monkeypatch.setattr(run.alerter, "send_reject", lambda h, ctx, reason, now: True)
+
+    with Store(":memory:") as s:
+        with caplog.at_level(logging.INFO, logger="memescreen.scanner"):
+            run.cycle(s, RiskCache(fetch=lambda a: None), T0, do_seed=False)
+
+    assert "cycle summary: detected=3 passed=0 dropped=3" in caplog.text
+    assert "LP not locked:2" in caplog.text
+    assert "age <60m:1" in caplog.text
+
+
 def test_cycle_does_not_post_a_reject_when_the_gate_passes(monkeypatch):
     hit = AnomalyHit(
         address="m", detected_at=T0, spike_ratio=20.0, accel=5.0, buy_ratio=0.9,
