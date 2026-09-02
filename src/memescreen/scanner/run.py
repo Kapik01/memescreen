@@ -165,6 +165,14 @@ def main(argv: list[str] | None = None) -> int:
             config.MISSED_LOG_PATH,
         )
 
+    # Co-host the trade-journal bot in this process when a bot token is set,
+    # so one Railway service runs both. Daemon thread: if it dies, the scan
+    # loop is unaffected.
+    if config.DISCORD_BOT_TOKEN:
+        from memescreen.journal import bot as journal_bot
+        journal_bot.start_in_thread()
+        log.info("journal bot thread started")
+
     log.info("scan started")
     cycle(store, risk_cache, datetime.now(UTC), do_seed=True)
     mark = time.monotonic()

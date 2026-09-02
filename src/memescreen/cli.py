@@ -20,6 +20,7 @@ def _build_parser() -> argparse.ArgumentParser:
     screen_p.add_argument("address", help="Solana token mint address")
 
     sub.add_parser("scan", help="continuous volume-spike scanner")
+    sub.add_parser("journal", help="Discord trade-journal bot")
     return parser
 
 
@@ -46,6 +47,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "scan":
         from memescreen.scanner import run
         return run.main()
+
+    if args.command == "journal":
+        from memescreen.journal import bot
+        return bot.run()
 
     parser.print_help(sys.stderr)
     return 2
