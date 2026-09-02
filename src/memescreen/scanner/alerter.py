@@ -124,6 +124,7 @@ def _record_missed(msg: str, now: datetime) -> None:
 def _wait_url(url: str) -> str:
     """Append `?wait=true` so Discord answers 200 + a JSON body on success
     instead of a bodyless 204 (which `request_json` would reject)."""
+    url = url or ""
     sep = "&" if "?" in url else "?"
     return f"{url}{sep}wait=true"
 
@@ -149,9 +150,16 @@ def send_reject(
     webhook is unset -- this feed is purely informational."""
     if not rejects_configured():
         return False
+    window = timedelta(hours=config.REJECT_COOLDOWN_H)
+    # Drop entries that can no longer suppress anything (keeps the dict bounded
+    # to "tokens rejected in the last cooldown window").
+    for addr in [a for a, t in _reject_seen.items() if now - t >= window]:
+        del _reject_seen[addr]
     last = _reject_seen.get(hit.address)
-    if last is not None and now - last < timedelta(hours=config.REJECT_COOLDOWN_H):
+    if last is not None and now - last < window:
         return False
+    # Set before the POST: a transiently-down webhook must not be re-hit every
+    # 60s. A missed reject is nothing (this feed is informational).
     _reject_seen[hit.address] = now
 
     sym = ctx.symbol or hit.address[:8]
