@@ -44,6 +44,24 @@ def pump_configured() -> bool:
     return bool(config.DISCORD_PUMP_WEBHOOK_URL)
 
 
+def _digest_url() -> str | None:
+    return config.DISCORD_DIGEST_WEBHOOK_URL or config.DISCORD_PUMP_WEBHOOK_URL
+
+
+def digest_configured() -> bool:
+    """True when the BOARD digest has somewhere to post (its own webhook, or
+    the pump webhook it falls back to)."""
+    return bool(_digest_url())
+
+
+def send_digest(content: str) -> bool:
+    """Post the periodic board digest. True only on a confirmed send."""
+    url = _digest_url()
+    if not url:
+        return False
+    return _post_discord(url, content)
+
+
 # --- formatting helpers -------------------------------------------------
 
 
