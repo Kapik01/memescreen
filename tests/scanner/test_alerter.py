@@ -459,6 +459,34 @@ def test_send_pump_falls_back_to_address_without_symbol(monkeypatch):
     assert _ADDR[:8] in json.loads(route.calls.last.request.content)["content"]
 
 
+_DIG_HOOK = "https://discord.com/api/webhooks/555/dig-token"
+_DIG_POST = f"{_DIG_HOOK}?wait=true"
+
+
+@respx.mock
+def test_send_digest_uses_the_digest_webhook(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_DIGEST_WEBHOOK_URL", _DIG_HOOK)
+    route = respx.post(_DIG_POST).mock(return_value=httpx.Response(200, json=_OK))
+    assert alerter.send_digest("BOARD ...") is True
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_send_digest_falls_back_to_pump_webhook(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_DIGEST_WEBHOOK_URL", None)
+    monkeypatch.setattr(config, "DISCORD_PUMP_WEBHOOK_URL", _PUMP_HOOK)
+    route = respx.post(_PUMP_POST).mock(return_value=httpx.Response(200, json=_OK))
+    assert alerter.send_digest("BOARD ...") is True
+    assert route.call_count == 1
+
+
+def test_send_digest_noop_when_neither_webhook_set(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_DIGEST_WEBHOOK_URL", None)
+    monkeypatch.setattr(config, "DISCORD_PUMP_WEBHOOK_URL", None)
+    assert alerter.digest_configured() is False
+    assert alerter.send_digest("x") is False
+
+
 def test_reject_seen_is_pruned_after_the_cooldown_window(monkeypatch):
     monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", None)  # no-op posts
     monkeypatch.setattr(config, "REJECT_COOLDOWN_H", 2.0)

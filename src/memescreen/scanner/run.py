@@ -15,7 +15,15 @@ import time
 from datetime import UTC, datetime
 
 from memescreen import config
-from memescreen.scanner import alerter, detector, filters, momentum, poller, universe
+from memescreen.scanner import (
+    alerter,
+    detector,
+    digest,
+    filters,
+    momentum,
+    poller,
+    universe,
+)
 from memescreen.scanner.riskcache import RiskCache
 from memescreen.scanner.store import Store
 
@@ -75,7 +83,10 @@ def _latest_or_none(store: Store, address: str):
     return store.latest_snapshot(address)
 
 
-def cycle(store: Store, risk_cache: RiskCache, now: datetime, *, do_seed: bool) -> None:
+def cycle(
+    store: Store, risk_cache: RiskCache, now: datetime, *,
+    do_seed: bool, do_digest: bool = False,
+) -> None:
     """One scan iteration. The whole body is guarded so one bad cycle never
     kills the loop -- failures are logged via ``logger.exception`` and swallowed.
     """
@@ -128,6 +139,8 @@ def cycle(store: Store, risk_cache: RiskCache, now: datetime, *, do_seed: bool) 
         # NEW PUMP momentum scan: independent of the spike funnel above, walks
         # every tracked token's latest snapshot for a young price run-up.
         momentum.scan(store, risk_cache, now)
+        if do_digest:
+            digest.post(store, now)
     except Exception:
         log.exception("cycle failed")
 
@@ -185,17 +198,22 @@ def main(argv: list[str] | None = None) -> int:
     mark = time.monotonic()
     next_poll = mark + config.POLL_INTERVAL_SEC
     next_seed = mark + config.SEED_INTERVAL_SEC
+    digest_sec = max(60.0, config.DIGEST_INTERVAL_MIN * 60.0)
+    next_digest = mark + digest_sec
 
     while not _STOP:
         if time.monotonic() < next_poll:
             time.sleep(min(1.0, max(0.0, next_poll - time.monotonic())))
             continue
         do_seed = time.monotonic() >= next_seed
-        cycle(store, risk_cache, datetime.now(UTC), do_seed=do_seed)
+        do_digest = config.DIGEST_INTERVAL_MIN > 0 and time.monotonic() >= next_digest
+        cycle(store, risk_cache, datetime.now(UTC), do_seed=do_seed, do_digest=do_digest)
         now_mono = time.monotonic()
         next_poll = _advance(next_poll, config.POLL_INTERVAL_SEC, now_mono)
         if do_seed:
             next_seed = _advance(next_seed, config.SEED_INTERVAL_SEC, now_mono)
+        if do_digest:
+            next_digest = _advance(next_digest, digest_sec, now_mono)
 
     store.prune_history(datetime.now(UTC))
     store.close()

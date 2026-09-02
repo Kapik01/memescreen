@@ -46,6 +46,9 @@ DISCORD_REJECTS_WEBHOOK_URL: str | None = _opt_str("DISCORD_REJECTS_WEBHOOK_URL"
 # Optional third webhook -> a #new-pump channel: the NEW PUMP momentum alerts
 # (young token on a price run-up, no safety gate). Blank = they aren't posted.
 DISCORD_PUMP_WEBHOOK_URL: str | None = _opt_str("DISCORD_PUMP_WEBHOOK_URL")
+# Optional webhook for the periodic BOARD digest; blank falls back to the pump
+# webhook.
+DISCORD_DIGEST_WEBHOOK_URL: str | None = _opt_str("DISCORD_DIGEST_WEBHOOK_URL")
 # Trade-journal bot: a Discord bot token (discord.com/developers). Blank = the
 # journal bot is disabled and `scan` runs without it.
 DISCORD_BOT_TOKEN: str | None = _opt_str("DISCORD_BOT_TOKEN")
@@ -133,6 +136,12 @@ PUMP_MAX_AGE_H: float = env("PUMP_MAX_AGE_H", 24.0, float)      # ...and no olde
 PUMP_MIN_LIQUIDITY: float = env("PUMP_MIN_LIQUIDITY", 10_000.0, float)
 PUMP_MAX_TOP10_PCT: float = env("PUMP_MAX_TOP10_PCT", 30.0, float)  # top-10 holders cap, %
 PUMP_COOLDOWN_H: float = env("PUMP_COOLDOWN_H", 3.0, float)     # one alert per token per window
+
+# --- scanner: periodic BOARD digest (watchlist context, NOT a signal) ---
+# Every DIGEST_INTERVAL_MIN minutes post the tracked universe's top movers by
+# 1h price change. 0 = off. No gate, no dedup -- it is a board snapshot.
+DIGEST_INTERVAL_MIN: float = env("DIGEST_INTERVAL_MIN", 0.0, float)
+DIGEST_TOP_N: int = env("DIGEST_TOP_N", 8, int)
 
 # --- scanner: ops (spec §10, §12) ---
 POLL_INTERVAL_SEC: int = env("POLL_INTERVAL_SEC", 60, int)

@@ -70,6 +70,16 @@ def test_pump_alert_defaults(monkeypatch):
     assert config.PUMP_COOLDOWN_H == 3.0
 
 
+def test_digest_defaults(monkeypatch):
+    for k in ("DIGEST_INTERVAL_MIN", "DIGEST_TOP_N", "DISCORD_DIGEST_WEBHOOK_URL"):
+        monkeypatch.setenv(k, "")
+    import memescreen.config as config
+    importlib.reload(config)
+    assert config.DIGEST_INTERVAL_MIN == 0.0
+    assert config.DIGEST_TOP_N == 8
+    assert config.DISCORD_DIGEST_WEBHOOK_URL is None
+
+
 def test_data_dir_default_and_derived_paths(monkeypatch):
     # setenv("") not delenv: reload() re-runs load_dotenv() and would otherwise
     # pick these up from a developer's real .env.
