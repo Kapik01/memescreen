@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+from memescreen import config
 from memescreen.journal.store import JournalStore
 
 T0 = datetime(2026, 9, 2, 12, 0, tzinfo=UTC)
@@ -71,6 +72,63 @@ def test_open_positions_and_closed_trades_partitioning():
         s.close_trade(address="AAA", exit_price=0.002, now=T0 + timedelta(hours=1), user=U)
         assert [p["symbol"] for p in s.open_positions(U)] == ["BBB"]
         assert [t["symbol"] for t in s.closed_trades(U)] == ["AAA"]
+
+
+# --- watched_wallets --------------------------------------------------
+
+WALLET = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+
+
+def test_watch_then_list_then_unwatch():
+    with JournalStore() as s:
+        ok, msg = s.watch_wallet(address=WALLET, label="whale1", user=U, now=T0)
+        assert (ok, msg) == (True, "watching")
+        rows = s.list_watched()
+        assert len(rows) == 1
+        assert rows[0]["address"] == WALLET and rows[0]["label"] == "whale1"
+        assert rows[0]["last_sig"] is None
+        assert s.unwatch_wallet(WALLET) is True
+        assert s.list_watched() == []
+
+
+def test_unwatch_unknown_wallet_returns_false():
+    with JournalStore() as s:
+        assert s.unwatch_wallet(WALLET) is False
+
+
+def test_rewatching_updates_label_not_cursor():
+    with JournalStore() as s:
+        s.watch_wallet(address=WALLET, label="old-label", user=U, now=T0)
+        s.update_wallet_cursor(WALLET, "sig123")
+        s.watch_wallet(address=WALLET, label="new-label", user=U, now=T0 + timedelta(hours=1))
+        row = s.list_watched()[0]
+        assert row["label"] == "new-label"
+        assert row["last_sig"] == "sig123"  # untouched by re-watch
+
+
+def test_watch_refuses_past_the_cap(monkeypatch):
+    monkeypatch.setattr(config, "WALLET_WATCH_MAX", 2)
+    with JournalStore() as s:
+        assert s.watch_wallet(address="w1", label=None, user=U, now=T0)[0] is True
+        assert s.watch_wallet(address="w2", label=None, user=U, now=T0)[0] is True
+        ok, msg = s.watch_wallet(address="w3", label=None, user=U, now=T0)
+        assert ok is False
+        assert "max" in msg
+
+
+def test_watch_cap_does_not_block_re_watching_an_existing_wallet(monkeypatch):
+    monkeypatch.setattr(config, "WALLET_WATCH_MAX", 1)
+    with JournalStore() as s:
+        s.watch_wallet(address=WALLET, label="a", user=U, now=T0)
+        ok, _ = s.watch_wallet(address=WALLET, label="b", user=U, now=T0)
+        assert ok is True
+
+
+def test_update_wallet_cursor_persists():
+    with JournalStore() as s:
+        s.watch_wallet(address=WALLET, label=None, user=U, now=T0)
+        s.update_wallet_cursor(WALLET, "abc123")
+        assert s.list_watched()[0]["last_sig"] == "abc123"
 
 
 def test_close_oldest_open_first_when_reopened_across_users():

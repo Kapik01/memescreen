@@ -23,6 +23,7 @@ from memescreen.scanner import (
     momentum,
     poller,
     universe,
+    walletwatch,
 )
 from memescreen.scanner.riskcache import RiskCache
 from memescreen.scanner.store import Store
@@ -85,7 +86,7 @@ def _latest_or_none(store: Store, address: str):
 
 def cycle(
     store: Store, risk_cache: RiskCache, now: datetime, *,
-    do_seed: bool, do_digest: bool = False,
+    do_seed: bool, do_digest: bool = False, do_wallet: bool = False,
 ) -> None:
     """One scan iteration. The whole body is guarded so one bad cycle never
     kills the loop -- failures are logged via ``logger.exception`` and swallowed.
@@ -141,6 +142,8 @@ def cycle(
         momentum.scan(store, risk_cache, now)
         if do_digest:
             digest.post(store, now)
+        if do_wallet:
+            walletwatch.scan(now)
     except Exception:
         log.exception("cycle failed")
 
@@ -200,6 +203,7 @@ def main(argv: list[str] | None = None) -> int:
     next_seed = mark + config.SEED_INTERVAL_SEC
     digest_sec = max(60.0, config.DIGEST_INTERVAL_MIN * 60.0)
     next_digest = mark + digest_sec
+    next_wallet = mark + config.WALLET_WATCH_INTERVAL_SEC
 
     while not _STOP:
         if time.monotonic() < next_poll:
@@ -207,13 +211,17 @@ def main(argv: list[str] | None = None) -> int:
             continue
         do_seed = time.monotonic() >= next_seed
         do_digest = config.DIGEST_INTERVAL_MIN > 0 and time.monotonic() >= next_digest
-        cycle(store, risk_cache, datetime.now(UTC), do_seed=do_seed, do_digest=do_digest)
+        do_wallet = bool(config.HELIUS_API_KEY) and time.monotonic() >= next_wallet
+        cycle(store, risk_cache, datetime.now(UTC),
+              do_seed=do_seed, do_digest=do_digest, do_wallet=do_wallet)
         now_mono = time.monotonic()
         next_poll = _advance(next_poll, config.POLL_INTERVAL_SEC, now_mono)
         if do_seed:
             next_seed = _advance(next_seed, config.SEED_INTERVAL_SEC, now_mono)
         if do_digest:
             next_digest = _advance(next_digest, digest_sec, now_mono)
+        if do_wallet:
+            next_wallet = _advance(next_wallet, config.WALLET_WATCH_INTERVAL_SEC, now_mono)
 
     store.prune_history(datetime.now(UTC))
     store.close()

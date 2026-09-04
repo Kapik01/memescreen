@@ -116,3 +116,46 @@ def test_non_string_creator_returns_none():
         return_value=httpx.Response(200, json={"creator": 12345})
     )
     assert pumpfun.fetch_creator_stats(MINT) is None
+
+
+# --- fetch_new_launches ----------------------------------------------------
+
+@respx.mock
+def test_new_launches_returns_mint_set():
+    route = respx.get(url__startswith=f"{_B}/coins").mock(
+        return_value=httpx.Response(200, json=[
+            {"mint": "aaa", "name": "A"}, {"mint": "bbb", "name": "B"},
+        ])
+    )
+    assert pumpfun.fetch_new_launches() == {"aaa", "bbb"}
+    qs = dict(route.calls.last.request.url.params)
+    assert qs["sort"] == "created_timestamp" and qs["order"] == "DESC"
+
+
+@respx.mock
+def test_new_launches_skips_bad_entries():
+    respx.get(url__startswith=f"{_B}/coins").mock(
+        return_value=httpx.Response(200, json=[
+            {"mint": "aaa"}, {"mint": ""}, {"mint": 123}, {}, "not a dict",
+        ])
+    )
+    assert pumpfun.fetch_new_launches() == {"aaa"}
+
+
+@respx.mock
+def test_new_launches_provider_error_returns_empty_set():
+    respx.get(url__startswith=f"{_B}/coins").mock(return_value=httpx.Response(530))
+    assert pumpfun.fetch_new_launches() == set()
+
+
+@respx.mock
+def test_new_launches_non_list_returns_empty_set():
+    respx.get(url__startswith=f"{_B}/coins").mock(return_value=httpx.Response(200, json={"x": 1}))
+    assert pumpfun.fetch_new_launches() == set()
+
+
+@respx.mock
+def test_new_launches_respects_limit_param(monkeypatch):
+    route = respx.get(url__startswith=f"{_B}/coins").mock(return_value=httpx.Response(200, json=[]))
+    pumpfun.fetch_new_launches(limit=5)
+    assert dict(route.calls.last.request.url.params)["limit"] == "5"

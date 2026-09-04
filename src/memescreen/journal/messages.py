@@ -11,6 +11,7 @@ _ADDR = r"[1-9A-HJ-NP-Za-km-z]{32,44}"
 _CONTRACT_RE = re.compile(rf"Contract:\s*({_ADDR})")
 _DEXLINK_RE = re.compile(rf"dexscreener\.com/solana/({_ADDR})")
 _BARE_ADDR_RE = re.compile(rf"\b{_ADDR}\b")
+_ADDR_FULL_RE = re.compile(rf"^{_ADDR}$")
 _SYMBOL_RE = re.compile(r"\$([A-Za-z0-9_]{2,15})")
 
 
@@ -57,10 +58,12 @@ def _num(token: str) -> float | None:
 
 @dataclass
 class Command:
-    kind: str  # 'in' | 'out' | 'note' | 'stats' | 'open' | 'help'
+    kind: str  # 'in' | 'out' | 'note' | 'stats' | 'open' | 'help' |
+               # 'watch' | 'unwatch' | 'wallets' | 'watch_help'
     price: float | None = None
     size: float | None = None
     note: str | None = None
+    address: str | None = None
 
 
 def parse_command(text: str) -> Command | None:
@@ -73,6 +76,21 @@ def parse_command(text: str) -> Command | None:
         return Command("open")
     if low in ("!help", "!journal"):
         return Command("help")
+    if low in ("!wallets", "!watched"):
+        return Command("wallets")
+
+    if low.startswith("!watch"):
+        parts2 = t.split(maxsplit=2)
+        if len(parts2) < 2 or not _ADDR_FULL_RE.match(parts2[1]):
+            return Command("watch_help")
+        label = parts2[2] if len(parts2) >= 3 else None
+        return Command("watch", address=parts2[1], note=label)
+
+    if low.startswith("!unwatch"):
+        parts2 = t.split(maxsplit=1)
+        if len(parts2) < 2 or not _ADDR_FULL_RE.match(parts2[1]):
+            return Command("watch_help")
+        return Command("unwatch", address=parts2[1])
 
     parts = t.split()
     if not parts:

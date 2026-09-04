@@ -8,6 +8,8 @@ import sqlite3
 from datetime import datetime
 from typing import Any
 
+from memescreen import config
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS journal_trades (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,6 +27,13 @@ CREATE TABLE IF NOT EXISTS journal_trades (
 );
 CREATE INDEX IF NOT EXISTS ix_trades_open
   ON journal_trades(opened_by, address, exit_price);
+CREATE TABLE IF NOT EXISTS watched_wallets (
+  address TEXT PRIMARY KEY,
+  label TEXT,
+  added_by TEXT NOT NULL,
+  added_at TEXT NOT NULL,
+  last_sig TEXT
+);
 """
 
 
@@ -123,3 +132,44 @@ class JournalStore:
             (user,),
         )
         return [dict(r) for r in cur.fetchall()]
+
+    # --- watched_wallets (smart-wallet buy tracking) ---
+
+    def watch_wallet(
+        self, *, address: str, label: str | None, user: str, now: datetime,
+    ) -> tuple[bool, str]:
+        """Start watching a wallet. Re-watching an already-watched wallet just
+        updates its label (its `last_sig` cursor is untouched). Refuses a new
+        wallet once `WALLET_WATCH_MAX` is reached."""
+        existing = self._conn.execute(
+            "SELECT 1 FROM watched_wallets WHERE address = ?", (address,)
+        ).fetchone()
+        if existing is None:
+            n = self._conn.execute(
+                "SELECT COUNT(*) AS n FROM watched_wallets"
+            ).fetchone()["n"]
+            if n >= config.WALLET_WATCH_MAX:
+                return False, f"already watching {config.WALLET_WATCH_MAX} wallets (the max) -- !unwatch one first"
+        self._conn.execute(
+            "INSERT INTO watched_wallets (address, label, added_by, added_at, last_sig) "
+            "VALUES (?, ?, ?, ?, NULL) "
+            "ON CONFLICT(address) DO UPDATE SET label = excluded.label",
+            (address, label, user, now.isoformat()),
+        )
+        self._conn.commit()
+        return True, "watching"
+
+    def unwatch_wallet(self, address: str) -> bool:
+        cur = self._conn.execute("DELETE FROM watched_wallets WHERE address = ?", (address,))
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def list_watched(self) -> list[dict[str, Any]]:
+        cur = self._conn.execute("SELECT * FROM watched_wallets ORDER BY added_at ASC")
+        return [dict(r) for r in cur.fetchall()]
+
+    def update_wallet_cursor(self, address: str, last_sig: str | None) -> None:
+        self._conn.execute(
+            "UPDATE watched_wallets SET last_sig = ? WHERE address = ?", (last_sig, address)
+        )
+        self._conn.commit()
