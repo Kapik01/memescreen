@@ -140,3 +140,8 @@ def test_parse_unwatch_malformed_returns_watch_help():
 def test_parse_wallets_list_command():
     assert parse_command("!wallets").kind == "wallets"
     assert parse_command("!watched").kind == "wallets"
+
+
+def test_parse_candidates_command():
+    assert parse_command("!candidates").kind == "candidates"
+    assert parse_command("!smart").kind == "candidates"

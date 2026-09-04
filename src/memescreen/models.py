@@ -122,3 +122,13 @@ class TokenBuy:
     mint: str
     amount: float | None
     timestamp: datetime | None
+
+
+@dataclass
+class EarlyBuyer:
+    """A wallet that recently received a given mint (Helius enhanced tx),
+    read off the mint's own transaction history. Feeds candidate-wallet
+    discovery -- a heuristic, not a safety check."""
+    wallet: str
+    signature: str
+    timestamp: datetime | None

@@ -34,6 +34,13 @@ CREATE TABLE IF NOT EXISTS watched_wallets (
   added_at TEXT NOT NULL,
   last_sig TEXT
 );
+CREATE TABLE IF NOT EXISTS candidate_sightings (
+  wallet TEXT NOT NULL,
+  mint TEXT NOT NULL,
+  alert_kind TEXT,
+  first_seen_at TEXT NOT NULL,
+  PRIMARY KEY (wallet, mint)
+);
 """
 
 
@@ -173,3 +180,32 @@ class JournalStore:
             "UPDATE watched_wallets SET last_sig = ? WHERE address = ?", (last_sig, address)
         )
         self._conn.commit()
+
+    # --- candidate_sightings (candidate smart-wallet discovery) ---
+
+    def record_candidate_sighting(
+        self, wallet: str, mint: str, alert_kind: str | None, now: datetime,
+    ) -> None:
+        """One (wallet, mint) pair is recorded at most once -- a wallet buying
+        the same token again does not inflate its distinct-token count."""
+        self._conn.execute(
+            "INSERT OR IGNORE INTO candidate_sightings (wallet, mint, alert_kind, first_seen_at) "
+            "VALUES (?, ?, ?, ?)",
+            (wallet, mint, alert_kind, now.isoformat()),
+        )
+        self._conn.commit()
+
+    def list_candidates(
+        self, *, min_hits: int | None = None, limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Wallets that bought early on at least `min_hits` distinct tokens,
+        most-hits first."""
+        min_hits = min_hits if min_hits is not None else config.CANDIDATE_MIN_HITS
+        limit = limit if limit is not None else config.CANDIDATE_LIST_LIMIT
+        cur = self._conn.execute(
+            "SELECT wallet, COUNT(DISTINCT mint) AS hits, MAX(first_seen_at) AS last_seen "
+            "FROM candidate_sightings GROUP BY wallet HAVING hits >= ? "
+            "ORDER BY hits DESC, last_seen DESC LIMIT ?",
+            (min_hits, limit),
+        )
+        return [dict(r) for r in cur.fetchall()]

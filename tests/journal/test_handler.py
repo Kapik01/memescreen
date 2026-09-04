@@ -112,3 +112,20 @@ def test_watch_over_the_cap(monkeypatch):
         _h(s, "!watch " + "1" * 32)
         r = _h(s, "!watch " + "2" * 32)
         assert "max" in r.text
+
+
+# --- candidate wallets --------------------------------------------------
+
+def test_candidates_empty_before_any_sightings():
+    with JournalStore() as s:
+        assert "no repeat-buyer" in _h(s, "!candidates").text
+
+
+def test_candidates_lists_repeat_buyers_with_watch_hint():
+    with JournalStore() as s:
+        s.record_candidate_sighting(WALLET, "mintA", "spike", T0)
+        s.record_candidate_sighting(WALLET, "mintB", "pump", T0)
+        r = _h(s, "!candidates")
+        assert WALLET[:8] in r.text
+        assert f"!watch {WALLET}" in r.text
+        assert "2x" in r.text

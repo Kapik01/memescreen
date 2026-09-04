@@ -141,6 +141,14 @@ WALLET_WATCH_INTERVAL_SEC: int = env("WALLET_WATCH_INTERVAL_SEC", 120, int)
 WALLET_WATCH_MAX: int = env("WALLET_WATCH_MAX", 20, int)      # cap on watched wallets
 WALLET_WATCH_LOOKBACK: int = env("WALLET_WATCH_LOOKBACK", 20, int)  # txns fetched per poll
 
+# --- scanner: candidate smart-wallet discovery (!candidates) ---
+# On every confirmed VOLUME SPIKE / NEW PUMP alert, record the wallets that
+# bought the token early. A wallet that recurs across multiple SEPARATE
+# alerts is evidence-based, unlike a leaderboard or a Twitter personality.
+CANDIDATE_BUYERS_LOOKBACK: int = env("CANDIDATE_BUYERS_LOOKBACK", 15, int)  # txns per hit
+CANDIDATE_MIN_HITS: int = env("CANDIDATE_MIN_HITS", 2, int)   # min distinct tokens to qualify
+CANDIDATE_LIST_LIMIT: int = env("CANDIDATE_LIST_LIMIT", 10, int)
+
 # --- scanner: NEW PUMP momentum alert (price run-up on a young token) ---
 # A separate, lighter signal from the volume-spike funnel: a freshly-polled
 # token that is already running. Posts to the #scan-rejects channel and has

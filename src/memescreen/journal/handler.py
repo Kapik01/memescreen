@@ -27,6 +27,7 @@ _HELP = (
     "  !watch <addr> [label]   get a SMART WALLET BUY alert when it buys\n"
     "  !unwatch <addr>         stop watching a wallet\n"
     "  !wallets                list watched wallets\n"
+    "  !candidates             wallets that bought early on 2+ separate alerts\n"
 )
 
 
@@ -81,6 +82,17 @@ def handle(
         ok = store.unwatch_wallet(cmd.address)
         tag = cmd.address[:8]
         return Reply(f"stopped watching {tag}." if ok else f"wasn't watching {tag}.")
+    if cmd.kind == "candidates":
+        rows = store.list_candidates()
+        if not rows:
+            return Reply(
+                "no repeat-buyer wallets yet — needs a few real alerts first "
+                "(bought early on 2+ separate tokens)."
+            )
+        lines = ["candidate wallets (bought early on multiple separate alerts):"]
+        for r in rows:
+            lines.append(f"  {r['wallet'][:8]}  {r['hits']}x  ·  !watch {r['wallet']}")
+        return Reply("\n".join(lines))
 
     # in / out / note all need the alert the user replied to
     if replied_to is None:
