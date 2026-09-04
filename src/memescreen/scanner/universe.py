@@ -5,7 +5,7 @@ import logging
 from datetime import UTC, datetime
 
 from memescreen import config
-from memescreen.providers import birdeye, dexscreener
+from memescreen.providers import birdeye, dexscreener, pumpfun
 from memescreen.scanner.store import Store
 
 _log = logging.getLogger(__name__)
@@ -21,7 +21,13 @@ def _safe(fetch) -> set[str]:
 
 def seed(store: Store, now: datetime | None = None) -> int:
     now = now or datetime.now(UTC)
-    feeds = _safe(dexscreener.fetch_feed_addresses) | _safe(birdeye.fetch_feed_addresses)
+    feeds = (
+        _safe(dexscreener.fetch_feed_addresses)
+        | _safe(birdeye.fetch_feed_addresses)
+        # pump.fun newest-first listing -- catches a launch before it has any
+        # traction, which the trending feeds above cannot.
+        | _safe(pumpfun.fetch_new_launches)
+    )
     store.upsert_seen(feeds, now)
     store.evict(now, config.UNIVERSE_CAP)
     total = len(store.universe_addresses())

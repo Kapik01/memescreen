@@ -55,6 +55,9 @@ DISCORD_BOT_TOKEN: str | None = _opt_str("DISCORD_BOT_TOKEN")
 # Optional allowlist of channel IDs the journal bot will act in. Blank = any
 # channel it can see.
 JOURNAL_CHANNEL_IDS: set[int] = _int_set("JOURNAL_CHANNEL_IDS")
+# Optional webhook for SMART WALLET BUY alerts; blank falls back to the pump
+# webhook.
+DISCORD_WALLET_WEBHOOK_URL: str | None = _opt_str("DISCORD_WALLET_WEBHOOK_URL")
 
 # --- data directory (Railway: set DATA_DIR=/data and mount a volume there) ---
 DATA_DIR: str = env("DATA_DIR", "data", str)
@@ -68,6 +71,8 @@ HELIUS_RPC: str | None = (
     if HELIUS_API_KEY
     else None
 )
+# Enhanced Transactions API (wallet history), separate base from the RPC above.
+HELIUS_API_BASE: str = env("HELIUS_API_BASE", "https://api.helius.xyz", str)
 
 # --- HTTP ---
 HTTP_TIMEOUT_SEC: float = env("HTTP_TIMEOUT_SEC", 10.0, float)
@@ -125,6 +130,16 @@ PUMPFUN_COUNT_LIMIT: int = env("PUMPFUN_COUNT_LIMIT", 50, int)
 PUMPFUN_MAX_COINS: int = min(
     env("PUMPFUN_MAX_COINS", 20, int), PUMPFUN_COUNT_LIMIT
 )
+# How many of pump.fun's newest coins to pull each seed cycle, to catch
+# brand-new launches that trending feeds haven't picked up yet.
+PUMPFUN_NEW_LAUNCHES_LIMIT: int = env("PUMPFUN_NEW_LAUNCHES_LIMIT", 40, int)
+
+# --- scanner: smart-wallet watch (SMART WALLET BUY alert) ---
+# Watched wallets are managed from Discord via the journal bot's !watch /
+# !unwatch / !wallets commands. Needs HELIUS_API_KEY (0 = disabled without it).
+WALLET_WATCH_INTERVAL_SEC: int = env("WALLET_WATCH_INTERVAL_SEC", 120, int)
+WALLET_WATCH_MAX: int = env("WALLET_WATCH_MAX", 20, int)      # cap on watched wallets
+WALLET_WATCH_LOOKBACK: int = env("WALLET_WATCH_LOOKBACK", 20, int)  # txns fetched per poll
 
 # --- scanner: NEW PUMP momentum alert (price run-up on a young token) ---
 # A separate, lighter signal from the volume-spike funnel: a freshly-polled

@@ -113,3 +113,12 @@ class CreatorStats:
     wallet: str
     coins_created: int
     capped: bool = False  # True if coins_created hit the API page limit (a floor)
+
+
+@dataclass
+class TokenBuy:
+    """One SPL-token acquisition by a watched wallet (Helius enhanced tx)."""
+    signature: str
+    mint: str
+    amount: float | None
+    timestamp: datetime | None

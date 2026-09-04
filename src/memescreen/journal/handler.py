@@ -22,8 +22,11 @@ _HELP = (
     "  out <price>             close it, records P&L\n"
     "  note <text>             attach a note\n"
     "anywhere:\n"
-    "  !stats   win rate + P&L by alert type\n"
-    "  !open    positions you haven't closed\n"
+    "  !stats                  win rate + P&L by alert type\n"
+    "  !open                   positions you haven't closed\n"
+    "  !watch <addr> [label]   get a SMART WALLET BUY alert when it buys\n"
+    "  !unwatch <addr>         stop watching a wallet\n"
+    "  !wallets                list watched wallets\n"
 )
 
 
@@ -57,6 +60,27 @@ def handle(
         ))
     if cmd.kind == "open":
         return Reply(stats.format_open(store.open_positions(author_id)))
+    if cmd.kind == "watch_help":
+        return Reply("usage: `!watch <wallet_address> [label]` or `!unwatch <wallet_address>`")
+    if cmd.kind == "wallets":
+        rows = store.list_watched()
+        if not rows:
+            return Reply("not watching any wallets. `!watch <address> [label]` to add one.")
+        lines = ["watched wallets:"] + [
+            f"  {r['label'] or r['address'][:8]}  {r['address']}" for r in rows
+        ]
+        return Reply("\n".join(lines))
+    if cmd.kind == "watch":
+        ok, msg = store.watch_wallet(address=cmd.address, label=cmd.note, user=author_id, now=now)
+        tag = cmd.note or cmd.address[:8]
+        return Reply(
+            f"\U0001f441️ watching **{tag}** — you'll get a SMART WALLET BUY alert on its next buy"
+            if ok else f"{tag}: {msg}."
+        )
+    if cmd.kind == "unwatch":
+        ok = store.unwatch_wallet(cmd.address)
+        tag = cmd.address[:8]
+        return Reply(f"stopped watching {tag}." if ok else f"wasn't watching {tag}.")
 
     # in / out / note all need the alert the user replied to
     if replied_to is None:

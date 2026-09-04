@@ -80,6 +80,21 @@ def test_digest_defaults(monkeypatch):
     assert config.DISCORD_DIGEST_WEBHOOK_URL is None
 
 
+def test_wallet_watch_defaults(monkeypatch):
+    for k in ("DISCORD_WALLET_WEBHOOK_URL", "WALLET_WATCH_INTERVAL_SEC",
+              "WALLET_WATCH_MAX", "WALLET_WATCH_LOOKBACK", "HELIUS_API_BASE",
+              "PUMPFUN_NEW_LAUNCHES_LIMIT"):
+        monkeypatch.setenv(k, "")
+    import memescreen.config as config
+    importlib.reload(config)
+    assert config.DISCORD_WALLET_WEBHOOK_URL is None
+    assert config.WALLET_WATCH_INTERVAL_SEC == 120
+    assert config.WALLET_WATCH_MAX == 20
+    assert config.WALLET_WATCH_LOOKBACK == 20
+    assert config.HELIUS_API_BASE == "https://api.helius.xyz"
+    assert config.PUMPFUN_NEW_LAUNCHES_LIMIT == 40
+
+
 def test_data_dir_default_and_derived_paths(monkeypatch):
     # setenv("") not delenv: reload() re-runs load_dotenv() and would otherwise
     # pick these up from a developer's real .env.

@@ -62,3 +62,26 @@ def fetch_creator_stats(mint: str) -> CreatorStats | None:
     # A full page means "at least `limit`" -- report the floor, it's enough to
     # trip the serial-creator threshold.
     return CreatorStats(wallet=creator, coins_created=count, capped=count >= limit)
+
+
+def fetch_new_launches(limit: int | None = None) -> set[str]:
+    """Mint addresses of pump.fun's most recently created coins. Public,
+    keyless. DexScreener/Birdeye's trending feeds only surface tokens that
+    already have traction; this seeds ones with none yet, so the scanner can
+    catch a launch in its first minutes instead of only after it trends."""
+    lim = limit if limit is not None else config.PUMPFUN_NEW_LAUNCHES_LIMIT
+    try:
+        coins = request_json(
+            _SOURCE, "GET", f"{config.PUMPFUN_BASE}/coins",
+            params={"sort": "created_timestamp", "order": "DESC", "offset": 0, "limit": lim},
+            headers=_HEADERS,
+        )
+    except ProviderError as exc:
+        _log.info("pumpfun new-launches -> %s", exc.reason)
+        return set()
+    if not isinstance(coins, list):
+        return set()
+    return {
+        c["mint"] for c in coins
+        if isinstance(c, dict) and isinstance(c.get("mint"), str) and c["mint"]
+    }

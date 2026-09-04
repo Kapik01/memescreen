@@ -13,7 +13,7 @@ import os
 from datetime import datetime, timedelta
 
 from memescreen import config
-from memescreen.models import AnomalyHit, MarketSnapshot, RiskData
+from memescreen.models import AnomalyHit, MarketSnapshot, RiskData, TokenBuy
 from memescreen.providers import dexscreener
 from memescreen.providers.base import ProviderError, request_json
 from memescreen.scanner.filters import FilterContext
@@ -60,6 +60,37 @@ def send_digest(content: str) -> bool:
     if not url:
         return False
     return _post_discord(url, content)
+
+
+def _wallet_url() -> str | None:
+    return config.DISCORD_WALLET_WEBHOOK_URL or config.DISCORD_PUMP_WEBHOOK_URL
+
+
+def wallet_configured() -> bool:
+    """True when SMART WALLET BUY has somewhere to post (its own webhook, or
+    the pump webhook it falls back to)."""
+    return bool(_wallet_url())
+
+
+def send_wallet_buy(wallet: dict, buy: TokenBuy) -> bool:
+    """Post a SMART WALLET BUY alert: a watched wallet just acquired a new
+    token. Best-effort symbol lookup; the usual narrative block is appended.
+    True only on a confirmed send."""
+    url = _wallet_url()
+    if not url:
+        return False
+    try:
+        sym = dexscreener.fetch_market_data(buy.mint).symbol
+    except Exception:
+        sym = None
+    tag = wallet.get("label") or wallet["address"][:8]
+    line = (
+        f"\U0001f433 SMART WALLET BUY — {tag} bought ${sym or buy.mint[:8]}\n"
+        f"{buy.mint}\n"
+        f"https://dexscreener.com/solana/{buy.mint}\n"
+        f"wallet: {wallet['address']}"
+    )
+    return _post_discord(url, _with_narrative(line, buy.mint))
 
 
 # --- formatting helpers -------------------------------------------------

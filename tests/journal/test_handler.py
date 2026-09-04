@@ -76,3 +76,39 @@ def test_note_requires_an_existing_trade():
 def test_stats_before_any_trade():
     with JournalStore() as s:
         assert "No closed trades yet" in _h(s, "!stats").text
+
+
+# --- wallet-watch commands --------------------------------------------
+
+WALLET = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+
+
+def test_watch_wallet_end_to_end():
+    with JournalStore() as s:
+        r = _h(s, f"!watch {WALLET} whale1")
+        assert "watching" in r.text and "whale1" in r.text
+        r = _h(s, "!wallets")
+        assert "whale1" in r.text and WALLET in r.text
+        r = _h(s, f"!unwatch {WALLET}")
+        assert "stopped watching" in r.text
+        assert "not watching any wallets" in _h(s, "!wallets").text
+
+
+def test_watch_without_label_uses_short_address():
+    with JournalStore() as s:
+        r = _h(s, f"!watch {WALLET}")
+        assert WALLET[:8] in r.text
+
+
+def test_watch_malformed_shows_usage():
+    with JournalStore() as s:
+        assert "usage" in _h(s, "!watch").text
+
+
+def test_watch_over_the_cap(monkeypatch):
+    import memescreen.journal.store as jstore_mod
+    monkeypatch.setattr(jstore_mod.config, "WALLET_WATCH_MAX", 1)
+    with JournalStore() as s:
+        _h(s, "!watch " + "1" * 32)
+        r = _h(s, "!watch " + "2" * 32)
+        assert "max" in r.text

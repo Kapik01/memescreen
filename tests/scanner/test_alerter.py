@@ -487,6 +487,70 @@ def test_send_digest_noop_when_neither_webhook_set(monkeypatch):
     assert alerter.send_digest("x") is False
 
 
+_WAL_HOOK = "https://discord.com/api/webhooks/321/wal-token"
+_WAL_POST = f"{_WAL_HOOK}?wait=true"
+
+
+def _wallet(**over):
+    base = dict(address="9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", label="whale1")
+    base.update(over)
+    return base
+
+
+def _buy(**over):
+    from memescreen.models import TokenBuy
+    base = dict(signature="sig1", mint=_ADDR, amount=100.0, timestamp=_NOW)
+    base.update(over)
+    return TokenBuy(**base)
+
+
+@respx.mock
+def test_send_wallet_buy_uses_its_own_webhook(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_WALLET_WEBHOOK_URL", _WAL_HOOK)
+    monkeypatch.setattr(alerter.dexscreener, "fetch_market_data", lambda a: _market(()))
+    route = respx.post(_WAL_POST).mock(return_value=httpx.Response(200, json=_OK))
+    assert alerter.send_wallet_buy(_wallet(), _buy()) is True
+    body = json.loads(route.calls.last.request.content)["content"]
+    assert "SMART WALLET BUY" in body and "whale1" in body and _ADDR in body
+
+
+@respx.mock
+def test_send_wallet_buy_falls_back_to_pump_webhook(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_WALLET_WEBHOOK_URL", None)
+    monkeypatch.setattr(config, "DISCORD_PUMP_WEBHOOK_URL", _PUMP_HOOK)
+    monkeypatch.setattr(alerter.dexscreener, "fetch_market_data", lambda a: _market(()))
+    route = respx.post(_PUMP_POST).mock(return_value=httpx.Response(200, json=_OK))
+    assert alerter.send_wallet_buy(_wallet(), _buy()) is True
+    assert route.call_count == 1
+
+
+def test_send_wallet_buy_noop_when_neither_webhook_set(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_WALLET_WEBHOOK_URL", None)
+    monkeypatch.setattr(config, "DISCORD_PUMP_WEBHOOK_URL", None)
+    assert alerter.wallet_configured() is False
+    assert alerter.send_wallet_buy(_wallet(), _buy()) is False
+
+
+@respx.mock
+def test_send_wallet_buy_uses_short_address_without_label(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_WALLET_WEBHOOK_URL", _WAL_HOOK)
+    monkeypatch.setattr(alerter.dexscreener, "fetch_market_data", lambda a: _market(()))
+    route = respx.post(_WAL_POST).mock(return_value=httpx.Response(200, json=_OK))
+    alerter.send_wallet_buy(_wallet(label=None), _buy())
+    tag = "9WzDXwBb"
+    assert tag in json.loads(route.calls.last.request.content)["content"]
+
+
+@respx.mock
+def test_send_wallet_buy_symbol_lookup_failure_still_sends(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_WALLET_WEBHOOK_URL", _WAL_HOOK)
+    def _boom(a):
+        raise RuntimeError("down")
+    monkeypatch.setattr(alerter.dexscreener, "fetch_market_data", _boom)
+    respx.post(_WAL_POST).mock(return_value=httpx.Response(200, json=_OK))
+    assert alerter.send_wallet_buy(_wallet(), _buy()) is True
+
+
 def test_reject_seen_is_pruned_after_the_cooldown_window(monkeypatch):
     monkeypatch.setattr(config, "DISCORD_REJECTS_WEBHOOK_URL", None)  # no-op posts
     monkeypatch.setattr(config, "REJECT_COOLDOWN_H", 2.0)

@@ -100,3 +100,43 @@ def test_parse_returns_none_for_chatter():
     assert parse_command("gm") is None
     assert parse_command("") is None
     assert parse_command("this looks good") is None
+
+
+# --- wallet-watch commands --------------------------------------------
+
+WALLET = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
+
+
+def test_parse_watch_with_label():
+    c = parse_command(f"!watch {WALLET} whale1")
+    assert (c.kind, c.address, c.note) == ("watch", WALLET, "whale1")
+
+
+def test_parse_watch_without_label():
+    c = parse_command(f"!watch {WALLET}")
+    assert (c.kind, c.address, c.note) == ("watch", WALLET, None)
+
+
+def test_parse_watch_label_keeps_spaces():
+    c = parse_command(f"!watch {WALLET} the OG whale")
+    assert c.note == "the OG whale"
+
+
+def test_parse_watch_malformed_returns_watch_help():
+    assert parse_command("!watch").kind == "watch_help"
+    assert parse_command("!watch not-an-address").kind == "watch_help"
+
+
+def test_parse_unwatch():
+    c = parse_command(f"!unwatch {WALLET}")
+    assert (c.kind, c.address) == ("unwatch", WALLET)
+
+
+def test_parse_unwatch_malformed_returns_watch_help():
+    assert parse_command("!unwatch").kind == "watch_help"
+    assert parse_command("!unwatch nope").kind == "watch_help"
+
+
+def test_parse_wallets_list_command():
+    assert parse_command("!wallets").kind == "wallets"
+    assert parse_command("!watched").kind == "wallets"
