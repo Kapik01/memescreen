@@ -132,3 +132,74 @@ def test_wallet_buys_tolerates_malformed_rows(monkeypatch):
         {"signature": "ok2", "tokenTransfers": [{"toUserAccount": WALLET, "mint": None}]},
     ]))
     assert helius.fetch_wallet_buys(WALLET) == []
+
+
+# --- fetch_early_buyers -----------------------------------------------
+
+MINT_URL = f"https://api.helius.xyz/v0/addresses/{MINT_A}/transactions"
+BUYER_1 = "1111111111111111111111111111111111111111"
+BUYER_2 = "2222222222222222222222222222222222222222"
+
+
+@respx.mock
+def test_early_buyers_returns_none_without_key(monkeypatch):
+    from memescreen import config
+    monkeypatch.setattr(config, "HELIUS_API_KEY", None)
+    from memescreen.providers import helius
+    assert helius.fetch_early_buyers(MINT_A) == []
+
+
+@respx.mock
+def test_early_buyers_extracts_distinct_recipients(monkeypatch):
+    from memescreen import config
+    monkeypatch.setattr(config, "HELIUS_API_KEY", "k")
+    from memescreen.providers import helius
+    respx.get(MINT_URL).mock(return_value=httpx.Response(200, json=[
+        _tx("s1", transfers=[_xfer(BUYER_1, MINT_A)]),
+        _tx("s2", transfers=[_xfer(BUYER_2, MINT_A)]),
+    ]))
+    buyers = helius.fetch_early_buyers(MINT_A)
+    assert {b.wallet for b in buyers} == {BUYER_1, BUYER_2}
+
+
+@respx.mock
+def test_early_buyers_dedupes_within_one_call(monkeypatch):
+    from memescreen import config
+    monkeypatch.setattr(config, "HELIUS_API_KEY", "k")
+    from memescreen.providers import helius
+    respx.get(MINT_URL).mock(return_value=httpx.Response(200, json=[
+        _tx("s1", transfers=[_xfer(BUYER_1, MINT_A)]),
+        _tx("s2", transfers=[_xfer(BUYER_1, MINT_A)]),
+    ]))
+    buyers = helius.fetch_early_buyers(MINT_A)
+    assert len(buyers) == 1 and buyers[0].wallet == BUYER_1
+
+
+@respx.mock
+def test_early_buyers_ignores_transfers_for_a_different_mint(monkeypatch):
+    from memescreen import config
+    monkeypatch.setattr(config, "HELIUS_API_KEY", "k")
+    from memescreen.providers import helius
+    respx.get(MINT_URL).mock(return_value=httpx.Response(200, json=[
+        _tx("s1", transfers=[_xfer(BUYER_1, "SOME_OTHER_MINT")]),
+    ]))
+    assert helius.fetch_early_buyers(MINT_A) == []
+
+
+@respx.mock
+def test_early_buyers_provider_error_returns_empty(monkeypatch):
+    from memescreen import config
+    monkeypatch.setattr(config, "HELIUS_API_KEY", "k")
+    from memescreen.providers import helius
+    respx.get(MINT_URL).mock(return_value=httpx.Response(500))
+    assert helius.fetch_early_buyers(MINT_A) == []
+
+
+@respx.mock
+def test_early_buyers_respects_limit_param(monkeypatch):
+    from memescreen import config
+    monkeypatch.setattr(config, "HELIUS_API_KEY", "k")
+    from memescreen.providers import helius
+    route = respx.get(MINT_URL).mock(return_value=httpx.Response(200, json=[]))
+    helius.fetch_early_buyers(MINT_A, limit=3)
+    assert dict(route.calls.last.request.url.params)["limit"] == "3"

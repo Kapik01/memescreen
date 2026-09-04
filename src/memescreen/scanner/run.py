@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from memescreen import config
 from memescreen.scanner import (
     alerter,
+    candidates,
     detector,
     digest,
     filters,
@@ -122,6 +123,8 @@ def cycle(
                     "gate: %s PASSED -> alert %s",
                     hit.address[:8], "sent" if sent else "not sent (cooldown / delivery)",
                 )
+                if sent:
+                    candidates.record_hit(hit.address, "spike", now)
             else:
                 log.info("gate: %s dropped (%s)", hit.address[:8], reason)
                 drops[reason] = drops.get(reason, 0) + 1

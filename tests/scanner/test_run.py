@@ -32,6 +32,36 @@ def test_cycle_runs_the_momentum_scan(monkeypatch):
     assert calls == [T0]
 
 
+def test_cycle_records_a_candidate_sighting_on_a_confirmed_send(monkeypatch):
+    hit = AnomalyHit(
+        address="m", detected_at=T0, spike_ratio=20.0, accel=5.0, buy_ratio=0.9,
+        buys_m5=50, vol_m5=9000.0, vol_h1=60000.0, liq_now=60000.0,
+        liq_change=1.0, first_seen_at=T0, anomaly_score=88,
+    )
+    snap = MarketSnapshot(address="m", fetched_at=T0, symbol="AAA", dex="raydium")
+    calls = []
+    monkeypatch.setattr(run.universe, "seed", lambda s, now: 0)
+    monkeypatch.setattr(run.poller, "poll_once", lambda s, now: 1)
+    monkeypatch.setattr(run.detector, "detect_all", lambda s, now: [hit])
+    monkeypatch.setattr(run, "_latest_or_none", lambda s, a: snap)
+    monkeypatch.setattr(
+        run.filters, "evaluate",
+        lambda h, s, rc, sn: (True, "", run.filters.FilterContext(
+            risk=None, holders=None, holder_growth=30, age_min=120.0, dex="raydium")),
+    )
+    monkeypatch.setattr(run.candidates, "record_hit",
+                        lambda mint, kind, now: calls.append((mint, kind)) or 0)
+
+    with Store(":memory:") as s:
+        monkeypatch.setattr(run.alerter, "send", lambda h, ctx, st, now: False)
+        run.cycle(s, RiskCache(fetch=lambda a: None), T0, do_seed=False)
+        assert calls == []  # not sent -> no candidate lookup
+
+        monkeypatch.setattr(run.alerter, "send", lambda h, ctx, st, now: True)
+        run.cycle(s, RiskCache(fetch=lambda a: None), T0, do_seed=False)
+        assert calls == [("m", "spike")]
+
+
 def test_cycle_runs_walletwatch_only_when_do_wallet_true(monkeypatch):
     calls = []
     monkeypatch.setattr(run.universe, "seed", lambda s, now: 0)

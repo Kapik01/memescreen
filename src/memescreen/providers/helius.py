@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from memescreen import config
-from memescreen.models import TokenBuy
+from memescreen.models import EarlyBuyer, TokenBuy
 from memescreen.providers.base import ProviderError, request_json
 
 _SOURCE = "helius"
@@ -90,4 +90,49 @@ def fetch_wallet_buys(
                 amount=float(amount) if isinstance(amount, (int, float)) and not isinstance(amount, bool) else None,
                 timestamp=when,
             ))
+    return out
+
+
+def fetch_early_buyers(mint: str, *, limit: int | None = None) -> list[EarlyBuyer]:
+    """Wallets that recently received `mint` -- i.e. bought it -- read off the
+    mint account's own enhanced transaction history (a mint is itself an
+    address on Solana). Best-effort heuristic feeding candidate-wallet
+    discovery, never a safety check: no key, no history, or any request
+    failure all return an empty list. Deduped within one call."""
+    if not config.HELIUS_API_KEY:
+        return []
+    lim = limit if limit is not None else config.CANDIDATE_BUYERS_LOOKBACK
+    try:
+        txns = request_json(
+            _SOURCE, "GET",
+            f"{config.HELIUS_API_BASE}/v0/addresses/{mint}/transactions",
+            params={"api-key": config.HELIUS_API_KEY, "limit": lim},
+        )
+    except ProviderError:
+        return []
+    if not isinstance(txns, list):
+        return []
+
+    out: list[EarlyBuyer] = []
+    seen: set[str] = set()
+    for tx in txns:
+        if not isinstance(tx, dict):
+            continue
+        sig = tx.get("signature")
+        if not isinstance(sig, str) or not sig:
+            continue
+        ts = tx.get("timestamp")
+        when = (
+            datetime.fromtimestamp(ts, tz=UTC)
+            if isinstance(ts, (int, float)) and not isinstance(ts, bool)
+            else None
+        )
+        for xfer in tx.get("tokenTransfers") or []:
+            if not isinstance(xfer, dict) or xfer.get("mint") != mint:
+                continue
+            buyer = xfer.get("toUserAccount")
+            if not isinstance(buyer, str) or not buyer or buyer in seen:
+                continue
+            seen.add(buyer)
+            out.append(EarlyBuyer(wallet=buyer, signature=sig, timestamp=when))
     return out

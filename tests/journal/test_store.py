@@ -131,6 +131,46 @@ def test_update_wallet_cursor_persists():
         assert s.list_watched()[0]["last_sig"] == "abc123"
 
 
+# --- candidate_sightings ------------------------------------------------
+
+def test_record_and_list_candidates_orders_by_hit_count():
+    with JournalStore() as s:
+        s.record_candidate_sighting("w1", "mintA", "spike", T0)
+        s.record_candidate_sighting("w1", "mintB", "pump", T0 + timedelta(hours=1))
+        s.record_candidate_sighting("w2", "mintA", "spike", T0)
+        rows = s.list_candidates(min_hits=1)
+        assert [(r["wallet"], r["hits"]) for r in rows] == [("w1", 2), ("w2", 1)]
+
+
+def test_list_candidates_respects_min_hits_threshold():
+    with JournalStore() as s:
+        s.record_candidate_sighting("w1", "mintA", "spike", T0)
+        assert s.list_candidates(min_hits=2) == []
+        s.record_candidate_sighting("w1", "mintB", "spike", T0)
+        assert len(s.list_candidates(min_hits=2)) == 1
+
+
+def test_same_wallet_mint_pair_only_counts_once():
+    with JournalStore() as s:
+        s.record_candidate_sighting("w1", "mintA", "spike", T0)
+        s.record_candidate_sighting("w1", "mintA", "pump", T0 + timedelta(hours=1))
+        rows = s.list_candidates(min_hits=1)
+        assert rows[0]["hits"] == 1
+
+
+def test_list_candidates_respects_limit():
+    with JournalStore() as s:
+        for i in range(5):
+            s.record_candidate_sighting(f"w{i}", "mintA", "spike", T0)
+            s.record_candidate_sighting(f"w{i}", "mintB", "spike", T0)
+        assert len(s.list_candidates(min_hits=1, limit=2)) == 2
+
+
+def test_list_candidates_empty_by_default():
+    with JournalStore() as s:
+        assert s.list_candidates() == []
+
+
 def test_close_oldest_open_first_when_reopened_across_users():
     # same token, two users each with an open position; each closes their own
     with JournalStore() as s:

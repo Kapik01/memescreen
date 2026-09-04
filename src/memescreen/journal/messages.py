@@ -78,6 +78,8 @@ def parse_command(text: str) -> Command | None:
         return Command("help")
     if low in ("!wallets", "!watched"):
         return Command("wallets")
+    if low in ("!candidates", "!smart"):
+        return Command("candidates")
 
     if low.startswith("!watch"):
         parts2 = t.split(maxsplit=2)

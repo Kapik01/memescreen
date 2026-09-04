@@ -18,7 +18,7 @@ from datetime import datetime
 
 from memescreen import config
 from memescreen.models import MarketSnapshot, RiskData
-from memescreen.scanner import alerter
+from memescreen.scanner import alerter, candidates
 from memescreen.scanner.riskcache import RiskCache
 from memescreen.scanner.store import Store
 
@@ -72,6 +72,7 @@ def scan(store: Store, risk_cache: RiskCache, now: datetime) -> int:
         if alerter.send_pump(snap, top10, age_min, now):
             store.record_pump_alert(snap.address, now, snap.price_change_h1)
             sent += 1
+            candidates.record_hit(snap.address, "pump", now)
 
     if checked or sent:
         _log.info("momentum: %d candidate(s) checked, %d NEW PUMP alert(s) sent", checked, sent)

@@ -121,6 +121,18 @@ def test_scan_alerts_and_records_dedup(monkeypatch):
         assert sent == ["m"]
 
 
+def test_scan_records_a_candidate_sighting_on_confirmed_send(monkeypatch):
+    _rejects_on(monkeypatch)
+    monkeypatch.setattr(momentum.alerter, "send_pump", lambda *a, **k: True)
+    calls = []
+    monkeypatch.setattr(momentum.candidates, "record_hit",
+                        lambda mint, kind, now: calls.append((mint, kind)) or 0)
+    with Store(":memory:") as s:
+        s.append_snapshots([_snap()])
+        momentum.scan(s, _Risk(_clean_risk()), T0)
+    assert calls == [("m", "pump")]
+
+
 def test_scan_skips_when_top10_too_concentrated(monkeypatch):
     _rejects_on(monkeypatch)
     calls = []

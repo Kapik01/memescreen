@@ -95,6 +95,16 @@ def test_wallet_watch_defaults(monkeypatch):
     assert config.PUMPFUN_NEW_LAUNCHES_LIMIT == 40
 
 
+def test_candidate_wallet_defaults(monkeypatch):
+    for k in ("CANDIDATE_BUYERS_LOOKBACK", "CANDIDATE_MIN_HITS", "CANDIDATE_LIST_LIMIT"):
+        monkeypatch.setenv(k, "")
+    import memescreen.config as config
+    importlib.reload(config)
+    assert config.CANDIDATE_BUYERS_LOOKBACK == 15
+    assert config.CANDIDATE_MIN_HITS == 2
+    assert config.CANDIDATE_LIST_LIMIT == 10
+
+
 def test_data_dir_default_and_derived_paths(monkeypatch):
     # setenv("") not delenv: reload() re-runs load_dotenv() and would otherwise
     # pick these up from a developer's real .env.
