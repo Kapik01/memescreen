@@ -110,7 +110,7 @@ def test_scan_alerts_and_records_dedup(monkeypatch):
     _rejects_on(monkeypatch)
     sent = []
     monkeypatch.setattr(momentum.alerter, "send_pump",
-                        lambda snap, top10, age_min, now: sent.append(snap.address) or True)
+                        lambda snap, top10, age_min, now, risk=None: sent.append(snap.address) or True)
     with Store(":memory:") as s:
         s.append_snapshots([_snap()])
         assert momentum.scan(s, _Risk(_clean_risk()), T0) == 1
@@ -177,3 +177,28 @@ def test_scan_only_checks_risk_for_cheap_check_survivors(monkeypatch):
         ])
         momentum.scan(s, risk, T0)
         assert risk.calls == 1  # only "good" reached the RugCheck lookup
+
+
+def test_scan_drops_insider_heavy_runner(monkeypatch):
+    _rejects_on(monkeypatch)
+    sent = []
+    monkeypatch.setattr(momentum.alerter, "send_pump",
+                        lambda *a, **k: sent.append(1) or True)
+    risk = _clean_risk()
+    risk.insider_pct = 45.0
+    with Store(":memory:") as s:
+        s.append_snapshots([_snap()])
+        assert momentum.scan(s, _Risk(risk), T0) == 0
+    assert sent == []
+
+
+def test_scan_passes_risk_to_send_pump(monkeypatch):
+    _rejects_on(monkeypatch)
+    seen = []
+    monkeypatch.setattr(momentum.alerter, "send_pump",
+                        lambda snap, top10, age_min, now, risk=None: seen.append(risk) or True)
+    risk = _clean_risk()
+    with Store(":memory:") as s:
+        s.append_snapshots([_snap()])
+        momentum.scan(s, _Risk(risk), T0)
+    assert seen == [risk]

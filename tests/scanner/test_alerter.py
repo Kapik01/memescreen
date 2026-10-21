@@ -564,3 +564,55 @@ def test_reject_seen_is_pruned_after_the_cooldown_window(monkeypatch):
         alerter.send_reject(_hit(address="fresh"), _ctx(), "x", _NOW + timedelta(hours=3))
     assert "stale" not in alerter._reject_seen
     assert "fresh" in alerter._reject_seen
+
+
+# --- insider line -----------------------------------------------------------
+
+def _insider_risk(**over) -> RiskData:
+    base = dict(
+        rugcheck_score=1, mint_authority_enabled=False,
+        freeze_authority_enabled=False, lp_locked_pct=100.0,
+        insider_pct=12.0, insider_network_size=48, creator_pct=6.0,
+        total_holders=1204,
+    )
+    base.update(over)
+    return RiskData(**base)
+
+
+def test_insider_line_full():
+    assert alerter._insider_line(_insider_risk()) == (
+        "\U0001f9e9 insiders 12% (net 48) · dev 6% · 1,204 holders"
+    )
+
+
+def test_insider_line_partial_and_empty():
+    assert alerter._insider_line(None) is None
+    assert alerter._insider_line(_insider_risk(
+        insider_pct=None, insider_network_size=None, creator_pct=None, total_holders=None,
+    )) is None
+    assert alerter._insider_line(_insider_risk(
+        insider_pct=None, insider_network_size=None, total_holders=None,
+    )) == "\U0001f9e9 dev 6%"
+    assert alerter._insider_line(_insider_risk(insider_network_size=0)) == (
+        "\U0001f9e9 insiders 12% · dev 6% · 1,204 holders"
+    )
+
+
+def test_format_message_includes_insider_line():
+    msg = alerter.format_message(_hit(), _ctx(risk=_insider_risk()))
+    assert "insiders 12% (net 48)" in msg
+
+
+@respx.mock
+def test_send_pump_shows_insider_line_and_light_check_wording(monkeypatch):
+    monkeypatch.setattr(config, "DISCORD_PUMP_WEBHOOK_URL", _PUMP_HOOK)
+    route = respx.post(_PUMP_POST).mock(return_value=httpx.Response(200, json=_OK))
+
+    ok = alerter.send_pump(_pump_snap(), top10_pct=22.0, age_min=185.0, now=_NOW,
+                           risk=_insider_risk())
+
+    assert ok is True
+    body = json.loads(route.calls.last.request.content)["content"]
+    assert "light check only (insiders/dev)" in body
+    assert "unvetted" not in body
+    assert "insiders 12% (net 48)" in body

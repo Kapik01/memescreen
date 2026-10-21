@@ -157,7 +157,7 @@ CANDIDATE_LIST_LIMIT: int = env("CANDIDATE_LIST_LIMIT", 10, int)
 # --- scanner: NEW PUMP momentum alert (price run-up on a young token) ---
 # A separate, lighter signal from the volume-spike funnel: a freshly-polled
 # token that is already running. Posts to the #scan-rejects channel and has
-# NO safety gate -- the alert is labelled unvetted on purpose.
+# only the light insider/dev gate -- labelled 'light check only'.
 PUMP_PRICE_PCT: float = env("PUMP_PRICE_PCT", 20.0, float)      # min 1h price change, %
 PUMP_MIN_AGE_H: float = env("PUMP_MIN_AGE_H", 1.0, float)       # must be at least this old
 PUMP_MAX_AGE_H: float = env("PUMP_MAX_AGE_H", 24.0, float)      # ...and no older than this

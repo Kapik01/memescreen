@@ -126,6 +126,24 @@ def _safety(risk: RiskData | None) -> str:
     return f"safety: {lp} · {mint} · {freeze}"
 
 
+def _insider_line(risk: RiskData | None) -> str | None:
+    """One-line insider / bundle / dev summary (spec 2026-10-21 §5.4). Parts
+    RugCheck didn't supply are omitted; None when there is nothing to say."""
+    if risk is None:
+        return None
+    parts = []
+    if risk.insider_pct is not None:
+        net = f" (net {risk.insider_network_size})" if risk.insider_network_size else ""
+        parts.append(f"insiders {risk.insider_pct:.0f}%{net}")
+    elif risk.insider_network_size:
+        parts.append(f"insider net {risk.insider_network_size}")
+    if risk.creator_pct is not None:
+        parts.append(f"dev {risk.creator_pct:.0f}%")
+    if risk.total_holders is not None:
+        parts.append(f"{risk.total_holders:,} holders")
+    return "\U0001f9e9 " + " · ".join(parts) if parts else None
+
+
 def format_message(hit: AnomalyHit, ctx: FilterContext) -> str:
     """Plain-text alert body (spec §7 layout). No markdown."""
     symbol = ctx.symbol or hit.address[:8]
@@ -138,6 +156,7 @@ def format_message(hit: AnomalyHit, ctx: FilterContext) -> str:
         holders_line = f"Holders   +{ctx.holder_growth} since first seen"
 
     rug = ctx.risk.rugcheck_score if ctx.risk is not None else None
+    insider = _insider_line(ctx.risk)
 
     lines = [
         f"\U0001f6a8 VOLUME SPIKE — ${symbol}  (score {hit.anomaly_score}/100)",
@@ -150,6 +169,7 @@ def format_message(hit: AnomalyHit, ctx: FilterContext) -> str:
         f"Age       {_age(ctx.age_min)}   ·   {ctx.dex or '?'}",
         "",
         _safety(ctx.risk),
+        *([insider] if insider else []),
         # `rug or 'n/a'` would render 0 -- the SAFEST possible score -- as
         # "unavailable"; only None means unavailable.
         f"RugCheck score: {rug if rug is not None else 'n/a'}",
@@ -237,22 +257,26 @@ def send_reject(
     _reject_seen[hit.address] = now
 
     sym = ctx.symbol or hit.address[:8]
+    insider = _insider_line(ctx.risk)
     line = (
         f"❌ {sym}  spike {hit.spike_ratio:.1f}x / {hit.buys_m5} buys  "
         f"·  dropped: {reason}\n"
-        f"{hit.address}\n"
+        + (f"{insider}\n" if insider else "")
+        + f"{hit.address}\n"
         f"https://dexscreener.com/solana/{hit.address}"
     )
     return _post_discord(config.DISCORD_REJECTS_WEBHOOK_URL, line)
 
 
 def send_pump(
-    snap: MarketSnapshot, top10_pct: float, age_min: float, now: datetime
+    snap: MarketSnapshot, top10_pct: float, age_min: float, now: datetime,
+    risk: RiskData | None = None,
 ) -> bool:
     """Post a NEW PUMP momentum alert to the rejects channel. This is a
     freshly-polled young token already running -- 1h price up, volume past
-    market cap, holders not over-concentrated. No safety gate ran, so the
-    line says so. Returns True only on a confirmed send; a no-op (False)
+    market cap, holders not over-concentrated. Only the light insider/dev
+    check ran (momentum.scan), so the line says so; `risk` adds the insider
+    line when RugCheck had data. Returns True only on a confirmed send; a no-op (False)
     when the NEW PUMP webhook is unset. Dedup is the caller's job
     (`store.recent_pump_alert` / `record_pump_alert`)."""
     if not pump_configured():
@@ -264,11 +288,13 @@ def send_pump(
         if snap.vol_h24 is not None and snap.market_cap_usd
         else 0.0
     )
+    insider = _insider_line(risk)
     line = (
         f"\U0001f4c8 NEW PUMP — ${sym}   +{pct:.0f}% 1h  ·  age {_age(age_min)}  ·  "
         f"vol/mcap {vol_mcap:.1f}x  ·  top10 {top10_pct:.0f}%  ·  liq {_money(snap.liquidity_usd)}\n"
-        f"unvetted — no safety gate ran, DYOR\n"
-        f"{snap.address}\n"
+        f"light check only (insiders/dev) — DYOR\n"
+        + (f"{insider}\n" if insider else "")
+        + f"{snap.address}\n"
         f"https://dexscreener.com/solana/{snap.address}\n"
         f"Run: screen {snap.address}"
     )
