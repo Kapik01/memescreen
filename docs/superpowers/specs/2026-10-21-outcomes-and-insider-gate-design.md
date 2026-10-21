@@ -115,8 +115,17 @@ For each open row, take `store.latest_snapshot(address)`:
   using `last_price`. (Checkpoints are "latest price as of that cycle". With a
   60s poll interval that is close enough.)
 - **Rugged** = any of: liquidity ≤ 20% of `liq0`; price ≤ 10% of `price0`;
-  no new snapshot for ≥ 30 min while open (pulled / delisted).
+  no new snapshot for ≥ 30 min while open (pulled / delisted). The 30-min
+  staleness rule is measured against the **newest `token_history` timestamp
+  overall**, not wall-clock `now`. If the whole poller was down (restart,
+  DexScreener outage), nothing is falsely marked rugged. It only applies to
+  rows that have been seen at least once.
+- On rug, every still-empty checkpoint is filled with `last_price`, so a rug
+  counts as a loss at +1h / +6h instead of silently dropping out.
 - **Close** the row when `now >= alerted_at + 6h` or when rugged.
+- A row that never gets a price (e.g. a wallet buy of a mint DexScreener
+  doesn't list) closes at 6h with no data. `!results` excludes it from return
+  stats and reports it as a `no price` count.
 - Call `store.touch_activity` on every open row's address. This keeps alerted
   tokens out of `store.evict` (both the stale cut and the cap cut order by
   `last_activity_ts`) for the full 6h window, without changing eviction.
@@ -185,7 +194,10 @@ CREATOR_MAX_PCT = 15.0   # drop if creator_pct >= this
 
 - **VOLUME SPIKE:** new step in `filters.evaluate`, right after the RugCheck
   danger check (step 7), before the Birdeye holder call. That way dropped
-  tokens cost no Birdeye credit. Reasons: `"insiders 34%"`, `"dev holds 18%"`.
+  tokens cost no Birdeye credit. Reasons name the threshold, not the token's
+  value, so the per-cycle drop tally groups them: `"insiders ≥30%"`,
+  `"dev holds ≥15%"`. The token's actual values appear on the insider line.
+  Shared helper: `filters.insider_drop_reason(risk) -> str | None`.
 - **NEW PUMP:** in `momentum.scan`, after the existing top-10 check, using the
   same `risk_cache.get` result. Dropped tokens get a `pump_reject` outcome row
   and are *not* posted anywhere. The rejects channel stays spike-only, to
@@ -236,6 +248,12 @@ Feature branch `feature/outcomes-insider-gate` → tests → merge `--no-ff` to
 `CREATE TABLE IF NOT EXISTS`, so no migration is needed. After deploy: confirm in
 Railway logs that outcomes are recorded and updated, and that an alert shows the
 insider line. Then wait ~7 days before Phase 2 design.
+
+**Out of scope: Railway config migration.** Railway deprecates `railway.json`
+on 2026-12-01. A dry run of `railway config migrate` (2026-10-21) emits only
+the start command. It drops `builder: NIXPACKS` and the restart policy, and the
+builder is load-bearing (Railpack has failed this repo before). This needs its
+own careful change, which it gets as a separate follow-up before 2026-12-01.
 
 ## 9. Known limitations
 
