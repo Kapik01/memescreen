@@ -174,3 +174,73 @@ def test_update_survives_a_bad_row(monkeypatch):
 
         monkeypatch.setattr(outcomes, "advance", flaky)
         assert outcomes.update(s, T0 + timedelta(hours=7)) == 1   # b closed, a skipped
+
+
+# --- summarize / format ----------------------------------------------------------
+
+def _closed(kind="spike", p0=1.0, p15=None, p1h=None, p6h=None, peak=None,
+            trough=None, rugged=0, insider=None, age=60.0, ch=30.0) -> dict:
+    return dict(kind=kind, price0=p0, price_15m=p15, price_1h=p1h, price_6h=p6h,
+                peak_price=peak, trough_price=trough, rugged=rugged,
+                insider_pct=insider, age_min0=age, change_h1_0=ch)
+
+
+def test_summarize_medians_and_shares():
+    rows = [
+        _closed(p15=1.1, p1h=1.2, p6h=2.0, peak=2.5, trough=0.9),   # winner
+        _closed(p15=0.9, p1h=0.5, p6h=0.2, peak=1.0, trough=0.2),   # loser
+        _closed(p15=1.0, p1h=None, p6h=None, peak=1.0, trough=1.0, age=30.0),  # still open
+    ]
+    st = outcomes.summarize(rows)
+    assert st.n == 3 and st.no_price == 0
+    assert round(st.ret_15m) == 0          # median of +10, -10, 0
+    assert round(st.ret_1h) == -15         # median of +20, -50
+    assert round(st.ret_6h) == 10          # median of +100, -80
+    assert round(st.pct_peak_50) == 33
+    assert round(st.pct_down_50) == 33
+    assert st.age_min0 == 60.0
+
+
+def test_summarize_counts_no_price_rows():
+    st = outcomes.summarize([_closed(p0=None), _closed(p15=1.5, peak=1.5, trough=1.0)])
+    assert st.n == 1 and st.no_price == 1
+    assert round(st.ret_15m) == 50
+
+
+def test_summarize_rugged_counts_as_down():
+    st = outcomes.summarize([_closed(p15=0.95, peak=1.0, trough=0.95, rugged=1)])
+    assert st.pct_down_50 == 100.0
+
+
+def test_insider_buckets():
+    assert outcomes.insider_bucket(None) == "unknown"
+    assert outcomes.insider_bucket(9.99) == "<10%"
+    assert outcomes.insider_bucket(10.0) == "10–30%"
+    assert outcomes.insider_bucket(30.0) == "≥30%"
+
+
+def test_format_results_empty():
+    text = outcomes.format_results({}, {}, 7)
+    assert "no alerts recorded in the last 7d" in text
+
+
+def test_format_results_all_kinds_fit_discord():
+    rows = []
+    for kind in outcomes.KINDS:
+        for i in range(30):
+            rows.append(_closed(kind=kind, p15=1.1, p1h=0.9, p6h=0.5, peak=1.8,
+                                trough=0.4, insider=(i * 3.0) if i % 4 else None))
+    text = outcomes.format_results(outcomes.summarize_by_kind(rows),
+                                   outcomes.summarize_by_insider(rows), 30)
+    assert len(text) < 1900
+    for label in ("VOLUME SPIKE", "spike rejects", "NEW PUMP", "pump rejects",
+                  "SMART WALLET", "by insider share"):
+        assert label in text
+
+
+def test_results_text_reads_the_db(tmp_path):
+    db = str(tmp_path / "m.db")
+    with Store(db) as s:
+        outcomes.record(s, address="tok", kind="spike", now=T0, snap=_snap())
+    text = outcomes.results_text(db, 7, T0 + timedelta(hours=1))
+    assert "VOLUME SPIKE" in text and "n=1" in text

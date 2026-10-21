@@ -10,6 +10,8 @@ Nothing here may break the scan: every public entry point logs and swallows.
 from __future__ import annotations
 
 import logging
+import statistics
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from memescreen.models import MarketSnapshot, RiskData
@@ -154,3 +156,130 @@ def update(store: Store, now: datetime) -> int:
     if closed:
         _log.info("outcomes: %d closed, %d still open", closed, len(still_open))
     return closed
+
+
+# --- reporting (spec §4.4) ----------------------------------------------------
+
+_LABELS = {
+    "spike": "VOLUME SPIKE",
+    "spike_reject": "spike rejects (gate said no)",
+    "pump": "NEW PUMP",
+    "pump_reject": "pump rejects (insider/dev)",
+    "wallet": "SMART WALLET BUY",
+}
+_BUCKETS = ("<10%", "10–30%", "≥30%", "unknown")
+
+
+@dataclass
+class KindStats:
+    n: int
+    no_price: int
+    ret_15m: float | None
+    ret_1h: float | None
+    ret_6h: float | None
+    pct_peak_50: float | None
+    pct_down_50: float | None
+    age_min0: float | None
+    change_h1_0: float | None
+
+
+def _median(xs) -> float | None:
+    xs = [x for x in xs if x is not None]
+    return statistics.median(xs) if xs else None
+
+
+def _ret(price: float | None, p0: float) -> float | None:
+    return None if price is None else (price / p0 - 1.0) * 100.0
+
+
+def summarize(rows: list[dict]) -> KindStats:
+    priced = [r for r in rows if r["price0"]]
+    n = len(priced)
+
+    def share(pred) -> float | None:
+        return 100.0 * sum(1 for r in priced if pred(r)) / n if n else None
+
+    return KindStats(
+        n=n,
+        no_price=len(rows) - n,
+        ret_15m=_median(_ret(r["price_15m"], r["price0"]) for r in priced),
+        ret_1h=_median(_ret(r["price_1h"], r["price0"]) for r in priced),
+        ret_6h=_median(_ret(r["price_6h"], r["price0"]) for r in priced),
+        pct_peak_50=share(lambda r: r["peak_price"] is not None
+                          and r["peak_price"] >= 1.5 * r["price0"]),
+        pct_down_50=share(lambda r: bool(r["rugged"]) or (
+            r["trough_price"] is not None and r["trough_price"] <= 0.5 * r["price0"])),
+        age_min0=_median(r["age_min0"] for r in priced),
+        change_h1_0=_median(r["change_h1_0"] for r in priced),
+    )
+
+
+def summarize_by_kind(rows: list[dict]) -> dict[str, KindStats]:
+    return {k: summarize([r for r in rows if r["kind"] == k])
+            for k in KINDS if any(r["kind"] == k for r in rows)}
+
+
+def insider_bucket(pct: float | None) -> str:
+    if pct is None:
+        return "unknown"
+    if pct < 10.0:
+        return "<10%"
+    if pct < 30.0:
+        return "10–30%"
+    return "≥30%"
+
+
+def summarize_by_insider(rows: list[dict]) -> dict[str, KindStats]:
+    groups: dict[str, list[dict]] = {}
+    for r in rows:
+        groups.setdefault(insider_bucket(r["insider_pct"]), []).append(r)
+    return {b: summarize(groups[b]) for b in _BUCKETS if b in groups}
+
+
+def _p(x: float | None) -> str:
+    return "n/a" if x is None else f"{x:+.0f}%"
+
+
+def _s(x: float | None) -> str:
+    return "n/a" if x is None else f"{x:.0f}%"
+
+
+def _hm(minutes: float | None) -> str:
+    if minutes is None:
+        return "n/a"
+    m = int(minutes)
+    return f"{m // 60}h {m % 60:02d}m"
+
+
+def format_results(
+    by_kind: dict[str, KindStats], by_insider: dict[str, KindStats], days: int,
+) -> str:
+    if not by_kind:
+        return (f"no alerts recorded in the last {days}d yet — outcome tracking "
+                "fills in as alerts fire.")
+    lines = [f"results — last {days}d  (median price change after the alert; "
+             "open alerts count with the checkpoints they have so far)", ""]
+    for kind, st in by_kind.items():
+        extra = f"  ({st.no_price} never priced)" if st.no_price else ""
+        lines += [
+            f"{_LABELS[kind]}   n={st.n}{extra}",
+            f"  15m {_p(st.ret_15m)} · 1h {_p(st.ret_1h)} · 6h {_p(st.ret_6h)}",
+            f"  peaked ≥+50%: {_s(st.pct_peak_50)} · fell ≥50%/rugged: {_s(st.pct_down_50)}",
+            f"  at alert: age {_hm(st.age_min0)} · already {_p(st.change_h1_0)} 1h",
+        ]
+    if by_insider:
+        lines += ["", "by insider share (all kinds):"]
+        for bucket, st in by_insider.items():
+            lines.append(
+                f"  {bucket:<8} n={st.n:<4} 6h {_p(st.ret_6h):>5} · "
+                f"≥+50% {_s(st.pct_peak_50):>4} · −50%/rug {_s(st.pct_down_50):>4}"
+            )
+    return "\n".join(lines)
+
+
+def results_text(db_path: str, days: int, now: datetime) -> str:
+    """What `!results` posts. Opens its own Store (the bot runs on another
+    thread than the scanner, and sqlite connections are per-thread)."""
+    with Store(db_path) as s:
+        rows = s.outcomes_since(now - timedelta(days=days))
+    return format_results(summarize_by_kind(rows), summarize_by_insider(rows), days)
