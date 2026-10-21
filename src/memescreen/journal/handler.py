@@ -3,8 +3,10 @@ text of the message it replied to, and who sent it, do the journal action and
 return the text to post back (or None to stay silent)."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Callable
 
 from memescreen.journal import stats
 from memescreen.journal.messages import (
@@ -15,6 +17,8 @@ from memescreen.journal.messages import (
     parse_command,
 )
 from memescreen.journal.store import JournalStore
+
+_log = logging.getLogger("memescreen.journal")
 
 _HELP = (
     "trade journal — reply to an alert with:\n"
@@ -28,6 +32,7 @@ _HELP = (
     "  !unwatch <addr>         stop watching a wallet\n"
     "  !wallets                list watched wallets\n"
     "  !candidates             wallets that bought early on 2+ separate alerts\n"
+    "  !results [days]         how past alerts played out (default 7d)\n"
 )
 
 
@@ -47,6 +52,7 @@ def handle(
     author_id: str,
     store: JournalStore,
     now: datetime,
+    results: Callable[[int], str] | None = None,
 ) -> Reply | None:
     cmd = parse_command(content)
     if cmd is None:
@@ -93,6 +99,14 @@ def handle(
         for r in rows:
             lines.append(f"  {r['wallet'][:8]}  {r['hits']}x  ·  !watch {r['wallet']}")
         return Reply("\n".join(lines))
+    if cmd.kind == "results":
+        if results is None:
+            return Reply("results need the scanner running in the same process.")
+        try:
+            return Reply(results(cmd.days or 7))
+        except Exception:
+            _log.exception("!results failed")
+            return Reply("couldn't load results (see logs).")
 
     # in / out / note all need the alert the user replied to
     if replied_to is None:

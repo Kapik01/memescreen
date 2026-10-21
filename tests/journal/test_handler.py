@@ -129,3 +129,31 @@ def test_candidates_lists_repeat_buyers_with_watch_hint():
         assert WALLET[:8] in r.text
         assert f"!watch {WALLET}" in r.text
         assert "2x" in r.text
+
+
+def test_results_command_uses_injected_fn():
+    asked = []
+    with JournalStore() as s:
+        r = handle(content="!results 3", replied_to=None, author_id=AUTHOR,
+                   store=s, now=T0, results=lambda d: asked.append(d) or f"R{d}")
+    assert r.text == "R3" and asked == [3]
+
+
+def test_results_command_without_scanner():
+    with JournalStore() as s:
+        r = _h(s, "!results")
+    assert "scanner" in r.text
+
+
+def test_results_command_errors_are_friendly():
+    def boom(days):
+        raise RuntimeError("db locked")
+    with JournalStore() as s:
+        r = handle(content="!results", replied_to=None, author_id=AUTHOR,
+                   store=s, now=T0, results=boom)
+    assert "couldn't load results" in r.text
+
+
+def test_help_mentions_results():
+    with JournalStore() as s:
+        assert "!results" in _h(s, "!help").text
