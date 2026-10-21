@@ -68,7 +68,7 @@ def test_cycle_runs_walletwatch_only_when_do_wallet_true(monkeypatch):
     monkeypatch.setattr(run.poller, "poll_once", lambda s, now: 0)
     monkeypatch.setattr(run.detector, "detect_all", lambda s, now: [])
     monkeypatch.setattr(run.momentum, "scan", lambda s, rc, now: 0)
-    monkeypatch.setattr(run.walletwatch, "scan", lambda now: calls.append(now) or 0)
+    monkeypatch.setattr(run.walletwatch, "scan", lambda now, store=None: calls.append(now) or 0)
     with Store(":memory:") as s:
         run.cycle(s, RiskCache(fetch=lambda a: None), T0, do_seed=False)
         assert calls == []

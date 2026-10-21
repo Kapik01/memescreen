@@ -15,14 +15,16 @@ from datetime import datetime
 from memescreen import config
 from memescreen.journal.store import JournalStore
 from memescreen.providers import helius
-from memescreen.scanner import alerter
+from memescreen.scanner import alerter, outcomes
+from memescreen.scanner.store import Store
 
 _log = logging.getLogger("memescreen.scanner")
 
 
-def scan(now: datetime) -> int:
+def scan(now: datetime, store: Store | None = None) -> int:
     """One pass over the watchlist. Returns alerts sent. No-op without a
-    Helius key or an alert destination."""
+    Helius key or an alert destination. With a `store`, each confirmed buy
+    also opens a `wallet` outcome row."""
     if not config.HELIUS_API_KEY or not alerter.wallet_configured():
         return 0
 
@@ -39,6 +41,10 @@ def scan(now: datetime) -> int:
                 for buy in reversed(buys):
                     if alerter.send_wallet_buy(wallet, buy):
                         sent += 1
+                        if store is not None:
+                            outcomes.record(store, address=buy.mint, kind="wallet", now=now,
+                                            snap=store.latest_snapshot(buy.mint),
+                                            reason=wallet["label"] or wallet["address"][:8])
             # Advance the cursor regardless of individual send outcomes -- a
             # transiently-down webhook loses that one buy rather than
             # replaying it forever (same tradeoff as the rejects feed).

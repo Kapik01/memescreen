@@ -102,3 +102,20 @@ def test_scan_counts_only_confirmed_sends(monkeypatch, tmp_path):
     # cursor still advances even though delivery failed (same tradeoff as rejects)
     with JournalStore(db) as s:
         assert s.list_watched()[0]["last_sig"] == "a"
+
+
+def test_confirmed_wallet_buy_records_outcome(monkeypatch, tmp_path):
+    from memescreen.scanner.store import Store
+    _on(monkeypatch)
+    db = str(tmp_path / "j.db")
+    monkeypatch.setattr(config, "JOURNAL_DB_PATH", db)
+    with JournalStore(db) as js:
+        js.watch_wallet(address=WALLET, label="whale", user="u", now=T0)
+        js.update_wallet_cursor(WALLET, "old-sig")
+    monkeypatch.setattr(walletwatch.helius, "fetch_wallet_buys",
+                        lambda addr, until_sig=None: [_buy("s1")])
+    monkeypatch.setattr(walletwatch.alerter, "send_wallet_buy", lambda w, b: True)
+    with Store(":memory:") as s:
+        assert walletwatch.scan(T0, s) == 1
+        [row] = s.open_outcomes()
+    assert (row["address"], row["kind"], row["reason"]) == (MINT, "wallet", "whale")

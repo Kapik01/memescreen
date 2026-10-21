@@ -19,7 +19,7 @@ from datetime import datetime
 
 from memescreen import config
 from memescreen.models import MarketSnapshot, RiskData
-from memescreen.scanner import alerter, candidates, filters
+from memescreen.scanner import alerter, candidates, filters, outcomes
 from memescreen.scanner.riskcache import RiskCache
 from memescreen.scanner.store import Store
 
@@ -73,12 +73,16 @@ def scan(store: Store, risk_cache: RiskCache, now: datetime) -> int:
         drop = filters.insider_drop_reason(risk)
         if drop is not None:
             _log.info("momentum: %s dropped (%s)", snap.address[:8], drop)
+            outcomes.record(store, address=snap.address, kind="pump_reject", now=now,
+                            snap=snap, reason=drop, risk=risk)
             continue
         age_min = (now - snap.pair_created_at).total_seconds() / 60.0
         if alerter.send_pump(snap, top10, age_min, now, risk=risk):
             store.record_pump_alert(snap.address, now, snap.price_change_h1)
             sent += 1
             candidates.record_hit(snap.address, "pump", now)
+            outcomes.record(store, address=snap.address, kind="pump", now=now,
+                            snap=snap, risk=risk, age_min=age_min)
 
     if checked or sent:
         _log.info("momentum: %d candidate(s) checked, %d NEW PUMP alert(s) sent", checked, sent)

@@ -202,3 +202,21 @@ def test_scan_passes_risk_to_send_pump(monkeypatch):
         s.append_snapshots([_snap()])
         momentum.scan(s, _Risk(risk), T0)
     assert seen == [risk]
+
+
+def test_scan_records_pump_and_pump_reject_outcomes(monkeypatch):
+    _rejects_on(monkeypatch)
+    monkeypatch.setattr(momentum.alerter, "send_pump", lambda *a, **k: True)
+    heavy = _clean_risk()
+    heavy.insider_pct = 45.0
+    with Store(":memory:") as s:
+        s.append_snapshots([_snap("ok"), _snap("bad")])
+        risks = {"ok": _clean_risk(), "bad": heavy}
+
+        class _ByAddr:
+            def get(self, address):
+                return risks[address]
+
+        momentum.scan(s, _ByAddr(), T0)
+        got = sorted((r["address"], r["kind"], r["reason"]) for r in s.open_outcomes())
+    assert got == [("bad", "pump_reject", "insiders ≥30%"), ("ok", "pump", None)]
