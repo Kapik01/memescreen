@@ -179,6 +179,9 @@ ALERT_COOLDOWN_H: float = env("ALERT_COOLDOWN_H", 6.0, float)
 REJECT_COOLDOWN_H: float = env("REJECT_COOLDOWN_H", 2.0, float)
 HISTORY_RETENTION_H: float = env("HISTORY_RETENTION_H", 3.0, float)
 RISK_CACHE_TTL_H: float = env("RISK_CACHE_TTL_H", 6.0, float)
+# RugCheck results with no holder analysis yet (fresh launches) are re-fetched
+# after this many minutes instead of RISK_CACHE_TTL_H.
+RISK_CACHE_UNANALYSED_TTL_MIN: float = env("RISK_CACHE_UNANALYSED_TTL_MIN", 10.0, float)
 BATCH_SIZE: int = env("BATCH_SIZE", 30, int)
 
 # Paths default to <DATA_DIR>/... but each stays individually overridable.

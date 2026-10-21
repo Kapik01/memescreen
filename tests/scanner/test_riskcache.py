@@ -53,3 +53,33 @@ def test_provider_error_falls_back_to_stale_entry():
     state["ok"] = False
     clk.advance(hours=7)
     assert cache.get("m") is _RD          # stale served
+
+
+def test_unanalysed_result_is_rechecked_after_short_ttl():
+    # A minutes-old token's report has no holder analysis yet (total_holders
+    # None). Caching that for 6h would blind the insider gate for 6h.
+    clk = _Clock()
+    calls = []
+    cache = RiskCache(fetch=lambda a: calls.append(a) or _RD, ttl_h=6.0,
+                      unanalysed_ttl_min=10.0, clock=clk)
+    cache.get("m")
+    clk.advance(minutes=9)
+    cache.get("m")
+    assert calls == ["m"]
+    clk.advance(minutes=2)
+    cache.get("m")
+    assert calls == ["m", "m"]
+
+
+def test_analysed_result_keeps_full_ttl():
+    clk = _Clock()
+    calls = []
+    analysed = RiskData(rugcheck_score=5, mint_authority_enabled=False,
+                        freeze_authority_enabled=False, lp_locked_pct=100.0,
+                        total_holders=500)
+    cache = RiskCache(fetch=lambda a: calls.append(a) or analysed, ttl_h=6.0,
+                      unanalysed_ttl_min=10.0, clock=clk)
+    cache.get("m")
+    clk.advance(hours=1)
+    cache.get("m")
+    assert calls == ["m"]

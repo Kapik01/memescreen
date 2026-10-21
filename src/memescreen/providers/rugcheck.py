@@ -7,6 +7,8 @@ from memescreen.models import HolderShare, RiskData
 from memescreen.providers.base import ProviderError, request_json
 
 _SOURCE = "rugcheck"
+# Below this many holders RugCheck's insider analysis hasn't run yet.
+_MIN_ANALYSED_HOLDERS = 10
 
 
 def _authority_enabled(*values) -> bool | None:
@@ -100,6 +102,15 @@ def _map_report(data: dict) -> RiskData:
     score = int(round(score_norm)) if isinstance(score_norm, (int, float)) else None
 
     total_holders = _num(data.get("totalHolders"))
+    insider_pct = _insider_pct(data.get("topHolders"))
+    insider_net = _insider_network_size(data)
+    # A minutes-old launch comes back with totalHolders 0-3 and every insider
+    # flag false: RugCheck hasn't analysed it yet. Report that as unknown, not
+    # as "0% insiders" -- otherwise alerts read clean and the outcome stats
+    # file unanalysed tokens in the low-insider bucket. The dev share is
+    # balance / supply and is real from the first block, so it stays.
+    if total_holders is None or total_holders < _MIN_ANALYSED_HOLDERS:
+        insider_pct = insider_net = total_holders = None
 
     return RiskData(
         rugcheck_score=score,
@@ -109,8 +120,8 @@ def _map_report(data: dict) -> RiskData:
         top_holders=holders,
         risk_flags=flags,
         danger_flags=danger,
-        insider_pct=_insider_pct(data.get("topHolders")),
-        insider_network_size=_insider_network_size(data),
+        insider_pct=insider_pct,
+        insider_network_size=insider_net,
         creator_pct=_creator_pct(data, token),
         total_holders=int(total_holders) if total_holders is not None else None,
     )
