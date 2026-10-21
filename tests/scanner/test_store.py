@@ -1,6 +1,8 @@
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from memescreen.models import AnomalyHit, MarketSnapshot
 from memescreen.scanner.store import Store
 
@@ -189,3 +191,53 @@ def test_migration_is_idempotent_across_reopens(tmp_path):
         cols = [r[1] for r in s._conn.execute("PRAGMA table_info(token_history)")]
         assert cols.count("pair_created_at") == 1
         assert cols.count("dex") == 1 and cols.count("symbol") == 1
+
+
+# --- alert_outcomes -----------------------------------------------------------
+
+_OT0 = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
+
+
+def _outcome(**over) -> dict:
+    base = dict(address="tok", kind="spike", alerted_at=_OT0.isoformat(), price0=1.0)
+    base.update(over)
+    return base
+
+
+def test_outcome_insert_open_update_close():
+    with Store(":memory:") as s:
+        rid = s.insert_outcome(_outcome())
+        assert s.has_open_outcome("tok", "spike") is True
+        assert s.has_open_outcome("tok", "pump") is False
+        [row] = s.open_outcomes()
+        assert row["id"] == rid and row["price0"] == 1.0 and row["rugged"] == 0
+        s.update_outcome(rid, {"price_15m": 1.2, "closed": 1})
+        assert s.open_outcomes() == []
+        assert s.has_open_outcome("tok", "spike") is False
+
+
+def test_outcome_rejects_unknown_columns():
+    with Store(":memory:") as s:
+        with pytest.raises(ValueError):
+            s.insert_outcome(_outcome(bogus=1))
+        rid = s.insert_outcome(_outcome())
+        with pytest.raises(ValueError):
+            s.update_outcome(rid, {"id = 0; --": 1})
+
+
+def test_outcomes_since_filters_by_alerted_at():
+    with Store(":memory:") as s:
+        s.insert_outcome(_outcome(alerted_at=(_OT0 - timedelta(days=10)).isoformat()))
+        s.insert_outcome(_outcome(address="new", alerted_at=_OT0.isoformat()))
+        rows = s.outcomes_since(_OT0 - timedelta(days=7))
+        assert [r["address"] for r in rows] == ["new"]
+
+
+def test_newest_history_ts():
+    with Store(":memory:") as s:
+        assert s.newest_history_ts() is None
+        s.append_snapshots([
+            MarketSnapshot(address="a", fetched_at=_OT0),
+            MarketSnapshot(address="b", fetched_at=_OT0 + timedelta(minutes=1)),
+        ])
+        assert s.newest_history_ts() == _OT0 + timedelta(minutes=1)
