@@ -80,3 +80,57 @@ def test_non_auth_error_propagates():
     respx.get(REPORT_URL).mock(return_value=httpx.Response(500))
     with pytest.raises(ProviderError):
         fetch_risk_data(ADDR)
+
+
+@respx.mock
+def test_clean_report_maps_insider_fields():
+    respx.get(REPORT_URL).mock(
+        return_value=httpx.Response(200, json=_load("rugcheck_report.json"))
+    )
+    r = fetch_risk_data(ADDR)
+    assert r.insider_pct == 0.0            # holders carry the key, none flagged
+    assert r.insider_network_size == 0     # no networks -> graphInsidersDetected
+    assert r.creator_pct == pytest.approx(2.0)
+    assert r.total_holders == 1204
+
+
+@respx.mock
+def test_insider_heavy_report():
+    respx.get(REPORT_URL).mock(
+        return_value=httpx.Response(200, json=_load("rugcheck_report_insiders.json"))
+    )
+    r = fetch_risk_data(ADDR)
+    assert r.insider_pct == pytest.approx(30.0)
+    assert r.insider_network_size == 48    # largest network wins
+    assert r.creator_pct == pytest.approx(18.0)
+    assert r.total_holders == 312
+
+
+@respx.mock
+def test_summary_fallback_leaves_insider_fields_none():
+    respx.get(REPORT_URL).mock(return_value=httpx.Response(403))
+    respx.get(SUMMARY_URL).mock(
+        return_value=httpx.Response(200, json=_load("rugcheck_summary.json"))
+    )
+    r = fetch_risk_data(ADDR)
+    assert r.insider_pct is None
+    assert r.insider_network_size is None
+    assert r.creator_pct is None
+    assert r.total_holders is None
+
+
+@respx.mock
+def test_malformed_insider_fields_become_none():
+    data = _load("rugcheck_report.json")
+    data["topHolders"] = [{"address": "x", "pct": 5.0}]   # no insider key
+    data["insiderNetworks"] = {"not": "a list"}
+    data["graphInsidersDetected"] = "lots"
+    data["creatorBalance"] = "123"
+    data["token"]["supply"] = 0
+    data["totalHolders"] = None
+    respx.get(REPORT_URL).mock(return_value=httpx.Response(200, json=data))
+    r = fetch_risk_data(ADDR)
+    assert r.insider_pct is None
+    assert r.insider_network_size is None
+    assert r.creator_pct is None
+    assert r.total_holders is None

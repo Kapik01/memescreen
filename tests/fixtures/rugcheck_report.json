@@ -3,7 +3,12 @@
   "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   "mintAuthority": null,
   "freezeAuthority": null,
-  "token": {"mintAuthority": null, "freezeAuthority": null, "decimals": 6},
+  "token": {"mintAuthority": null, "freezeAuthority": null, "decimals": 6, "supply": 1000000000000000},
+  "creator": "CreatorWa11et1111111111111111111111111111111",
+  "creatorBalance": 20000000000000,
+  "graphInsidersDetected": 0,
+  "insiderNetworks": null,
+  "totalHolders": 1204,
   "tokenMeta": {"name": "dogwifhat", "symbol": "WIF"},
   "topHolders": [
     {"address": "Hxxxaaa", "pct": 4.2, "insider": false},

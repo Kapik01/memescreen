@@ -24,6 +24,51 @@ def _authority_enabled(*values) -> bool | None:
     return False if saw_key else None
 
 
+def _num(v) -> float | None:
+    """A JSON number -> float. Strings, bools, None and junk -> None (a
+    malformed field must never raise out of the mapper)."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    return float(v)
+
+
+def _insider_pct(raw_holders) -> float | None:
+    """Sum of `pct` over top holders RugCheck flags `insider: true`. None when
+    no holder carries the `insider` key at all (analysis absent, not zero)."""
+    saw_key = False
+    total = 0.0
+    for h in raw_holders or []:
+        if not isinstance(h, dict) or "insider" not in h:
+            continue
+        saw_key = True
+        pct = _num(h.get("pct"))
+        if h.get("insider") is True and pct is not None:
+            total += pct
+    return total if saw_key else None
+
+
+def _insider_network_size(data: dict) -> int | None:
+    nets = data.get("insiderNetworks")
+    sizes = []
+    if isinstance(nets, list):
+        for n in nets:
+            size = _num(n.get("size")) if isinstance(n, dict) else None
+            if size is not None:
+                sizes.append(int(size))
+    if sizes:
+        return max(sizes)
+    detected = _num(data.get("graphInsidersDetected"))
+    return int(detected) if detected is not None else None
+
+
+def _creator_pct(data: dict, token: dict) -> float | None:
+    balance = _num(data.get("creatorBalance"))
+    supply = _num(token.get("supply"))
+    if balance is None or supply is None or supply <= 0:
+        return None
+    return balance / supply * 100.0
+
+
 def _map_report(data: dict) -> RiskData:
     token = data.get("token") or {}
     mint = _authority_enabled(
@@ -54,6 +99,8 @@ def _map_report(data: dict) -> RiskData:
     score_norm = data.get("score_normalised")
     score = int(round(score_norm)) if isinstance(score_norm, (int, float)) else None
 
+    total_holders = _num(data.get("totalHolders"))
+
     return RiskData(
         rugcheck_score=score,
         mint_authority_enabled=mint,
@@ -62,6 +109,10 @@ def _map_report(data: dict) -> RiskData:
         top_holders=holders,
         risk_flags=flags,
         danger_flags=danger,
+        insider_pct=_insider_pct(data.get("topHolders")),
+        insider_network_size=_insider_network_size(data),
+        creator_pct=_creator_pct(data, token),
+        total_holders=int(total_holders) if total_holders is not None else None,
     )
 
 
