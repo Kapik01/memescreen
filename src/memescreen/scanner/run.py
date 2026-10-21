@@ -133,8 +133,11 @@ def cycle(
                 log.info("gate: %s dropped (%s)", hit.address[:8], reason)
                 drops[reason] = drops.get(reason, 0) + 1
                 alerter.send_reject(hit, ctx, reason, now)
-                outcomes.record(store, address=hit.address, kind="spike_reject", now=now,
-                                snap=snap, reason=reason, risk=ctx.risk, age_min=ctx.age_min)
+                # "cooldown" = it already alerted; recording it would copy the
+                # alert's price path into the reject cohort of !results.
+                if reason != "cooldown":
+                    outcomes.record(store, address=hit.address, kind="spike_reject", now=now,
+                                    snap=snap, reason=reason, risk=ctx.risk, age_min=ctx.age_min)
         if hits:
             # One rollup line per cycle so tuning is data-driven: which filter
             # is actually eating the hits, and how many.

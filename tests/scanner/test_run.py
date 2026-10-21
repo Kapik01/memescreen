@@ -276,3 +276,32 @@ def test_hit_is_filtered_and_alerted(monkeypatch, caplog):
     assert calls == [("m", "AAA")]
     assert "detected 1 anomaly hit" in caplog.text
     assert "gate: m" in caplog.text and "PASSED" in caplog.text
+
+
+def test_cooldown_rejects_are_not_recorded_as_outcomes(monkeypatch):
+    # A token that just alerted re-fires every cycle and fails on "cooldown".
+    # That is not the gate saying no -- recording it would copy the winners
+    # into the reject cohort of !results.
+    hit = AnomalyHit(
+        address="m", detected_at=T0, spike_ratio=20.0, accel=5.0, buy_ratio=0.9,
+        buys_m5=50, vol_m5=9000.0, vol_h1=60000.0, liq_now=60000.0,
+        liq_change=1.0, first_seen_at=T0, anomaly_score=88,
+    )
+    snap = MarketSnapshot(address="m", fetched_at=T0, symbol="AAA", price_usd=1.0)
+    ctx = run.filters.FilterContext(risk=None, holders=None, holder_growth=None,
+                                    age_min=120.0, dex="raydium")
+    reason = {"r": "cooldown"}
+    monkeypatch.setattr(run.universe, "seed", lambda s, now: 0)
+    monkeypatch.setattr(run.poller, "poll_once", lambda s, now: 1)
+    monkeypatch.setattr(run.detector, "detect_all", lambda s, now: [hit])
+    monkeypatch.setattr(run, "_latest_or_none", lambda s, a: snap)
+    monkeypatch.setattr(run.filters, "evaluate", lambda h, s, rc, sn: (False, reason["r"], ctx))
+    monkeypatch.setattr(run.alerter, "send_reject", lambda *a, **k: False)
+    monkeypatch.setattr(run.momentum, "scan", lambda s, rc, now: 0)
+    with Store(":memory:") as s:
+        run.cycle(s, RiskCache(fetch=lambda a: None), T0, do_seed=False)
+        assert s.open_outcomes() == []
+        reason["r"] = "LP not locked"
+        run.cycle(s, RiskCache(fetch=lambda a: None), T0, do_seed=False)
+        assert [(r["kind"], r["reason"]) for r in s.open_outcomes()] == [
+            ("spike_reject", "LP not locked")]

@@ -118,9 +118,11 @@ def advance(
     if rugged:
         out["rugged"] = 1
         out["closed"] = 1
-        for col, _ in CHECKPOINTS:   # a rug counts as a loss at every later checkpoint
+        # A rug is a total loss at every checkpoint not yet observed: the last
+        # quoted price of a pulled / delisted token can't be sold at.
+        for col, _ in CHECKPOINTS:
             if cur[col] is None:
-                out[col] = cur["last_price"]
+                out[col] = 0.0
     elif now >= alerted + WINDOW:
         out["closed"] = 1
     return out
@@ -214,9 +216,20 @@ def summarize(rows: list[dict]) -> KindStats:
     )
 
 
+_PASS_KIND = {"spike_reject": "spike", "pump_reject": "pump"}
+
+
 def summarize_by_kind(rows: list[dict]) -> dict[str, KindStats]:
-    return {k: summarize([r for r in rows if r["kind"] == k])
-            for k in KINDS if any(r["kind"] == k for r in rows)}
+    """Reject rows for a token that also alerted in the same window are left
+    out: e.g. "no holder baseline yet" fails a token's first hit and it passes
+    a cycle later -- that is the same price path, not a token the gate threw
+    away."""
+    alerted = {(r["kind"], r.get("address")) for r in rows if r["kind"] in _PASS_KIND.values()}
+    kept = [r for r in rows
+            if r["kind"] not in _PASS_KIND
+            or (_PASS_KIND[r["kind"]], r.get("address")) not in alerted]
+    return {k: summarize([r for r in kept if r["kind"] == k])
+            for k in KINDS if any(r["kind"] == k for r in kept)}
 
 
 def insider_bucket(pct: float | None) -> str:

@@ -97,7 +97,8 @@ def test_advance_rug_on_liquidity_pull_fills_checkpoints():
     now = T0 + timedelta(minutes=20)
     f = outcomes.advance(_row(), _snap(price=0.5, liq=5_000.0, at=now), now, now)
     assert f["rugged"] == 1 and f["closed"] == 1
-    assert f["price_15m"] == 0.5 and f["price_1h"] == 0.5 and f["price_6h"] == 0.5
+    assert f["price_15m"] == 0.5                       # observed at +15m
+    assert f["price_1h"] == 0.0 and f["price_6h"] == 0.0   # rug = total loss
 
 
 def test_advance_rug_on_price_collapse():
@@ -228,8 +229,9 @@ def test_format_results_all_kinds_fit_discord():
     rows = []
     for kind in outcomes.KINDS:
         for i in range(30):
-            rows.append(_closed(kind=kind, p15=1.1, p1h=0.9, p6h=0.5, peak=1.8,
-                                trough=0.4, insider=(i * 3.0) if i % 4 else None))
+            rows.append({**_closed(kind=kind, p15=1.1, p1h=0.9, p6h=0.5, peak=1.8,
+                                   trough=0.4, insider=(i * 3.0) if i % 4 else None),
+                         "address": f"{kind}-{i}"})
     text = outcomes.format_results(outcomes.summarize_by_kind(rows),
                                    outcomes.summarize_by_insider(rows), 30)
     assert len(text) < 1900
@@ -244,3 +246,49 @@ def test_results_text_reads_the_db(tmp_path):
         outcomes.record(s, address="tok", kind="spike", now=T0, snap=_snap())
     text = outcomes.results_text(db, 7, T0 + timedelta(hours=1))
     assert "VOLUME SPIKE" in text and "n=1" in text
+
+
+# --- review fixes ----------------------------------------------------------------
+
+def test_reject_rows_for_tokens_that_also_alerted_are_left_out():
+    # "no holder baseline yet" fails a token's first hit; it passes a cycle
+    # later. Its reject row is the same price path as the alert -- not a
+    # token the gate threw away.
+    rows = [
+        {**_closed(kind="spike", p15=2.0, peak=2.0, trough=1.0), "address": "x"},
+        {**_closed(kind="spike_reject", p15=2.0, peak=2.0, trough=1.0), "address": "x"},
+        {**_closed(kind="spike_reject", p15=0.5, peak=1.0, trough=0.5), "address": "y"},
+        {**_closed(kind="pump", p15=1.5, peak=1.5, trough=1.0), "address": "z"},
+        {**_closed(kind="pump_reject", p15=0.4, peak=1.0, trough=0.4), "address": "z"},
+    ]
+    by_kind = outcomes.summarize_by_kind(rows)
+    assert by_kind["spike_reject"].n == 1 and round(by_kind["spike_reject"].ret_15m) == -50
+    assert "pump_reject" not in by_kind
+
+
+def test_restart_after_long_downtime_does_not_rug_open_rows():
+    # Scanner down 4h (> the 3h history retention). On restart the first seed
+    # evicts tokens not in the feeds; an alerted token must survive that and
+    # get polled, not vanish and be marked rugged.
+    with Store(":memory:") as s:
+        s.append_snapshots([_snap()])
+        outcomes.record(s, address="tok", kind="spike", now=T0, snap=_snap())
+        restart = T0 + timedelta(hours=4)
+        s.upsert_seen({"other"}, restart)          # seed: current feeds
+        s.evict(restart, cap=10_000)               # seed: eviction
+        assert "tok" in s.universe_addresses()
+        s.append_snapshots([_snap(price=1.3, at=restart), _snap(addr="other", at=restart)])
+        outcomes.update(s, restart)
+        [row] = s.open_outcomes()
+        assert row["rugged"] == 0 and row["last_price"] == 1.3
+
+
+def test_vanished_after_pumping_counts_as_a_loss():
+    # Ran to 3x, then disappeared: a rug is a loss, not "+200% at 6h".
+    now = T0 + timedelta(minutes=50)
+    row = _row(price_15m=3.0, peak_price=3.0, last_price=3.0,
+               last_seen_at=(T0 + timedelta(minutes=19)).isoformat())
+    f = outcomes.advance(row, None, now, now)
+    assert f["rugged"] == 1
+    assert f["price_1h"] == 0.0 and f["price_6h"] == 0.0
+    assert "price_15m" not in f        # observed before the rug -- kept

@@ -80,6 +80,13 @@ _HISTORY_ADDED_COLUMNS = (
     ("price_change_h1", "REAL"),
 )
 
+# Tokens with an open outcome row are never evicted: after a long scanner
+# outage the first seed would otherwise drop them, they'd stop being polled,
+# and the outcome tracker would read that as a rug.
+_NOT_OPEN_OUTCOME = (
+    "address NOT IN (SELECT address FROM alert_outcomes WHERE closed = 0)"
+)
+
 # Writable alert_outcomes columns. Column names are interpolated into SQL by
 # insert_outcome / update_outcome, so anything not listed here is refused.
 OUTCOME_COLUMNS: frozenset[str] = frozenset({
@@ -267,7 +274,8 @@ class Store:
         cur = self._conn.execute(
             "DELETE FROM universe WHERE "
             "(last_seen_in_feed IS NULL OR last_seen_in_feed < ?) AND "
-            "(last_activity_ts IS NULL OR last_activity_ts < ?)",
+            "(last_activity_ts IS NULL OR last_activity_ts < ?) AND "
+            + _NOT_OPEN_OUTCOME,
             (cutoff, cutoff),
         )
         deleted = cur.rowcount
@@ -279,7 +287,7 @@ class Store:
             excess = remaining - cap
             cur = self._conn.execute(
                 "DELETE FROM universe WHERE address IN ("
-                "SELECT address FROM universe "
+                "SELECT address FROM universe WHERE " + _NOT_OPEN_OUTCOME + " "
                 "ORDER BY COALESCE(last_activity_ts, first_seen) ASC LIMIT ?"
                 ")",
                 (excess,),
