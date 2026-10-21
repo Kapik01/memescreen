@@ -98,6 +98,11 @@ VERDICT_AVOID_MAX: int = env("VERDICT_AVOID_MAX", 40, int)
 VERDICT_TRADE_MIN: int = env("VERDICT_TRADE_MIN", 70, int)
 
 RUGCHECK_DANGER_MAX: float = env("RUGCHECK_DANGER_MAX", 60.0, float)
+# Insider / bundle / dev gate (spec 2026-10-21 §5.3). Drops VOLUME SPIKE and
+# NEW PUMP candidates whose flagged-insider top holders, or creator wallet,
+# hold at least this % of supply. Fail-open: unknown values never drop.
+INSIDER_MAX_PCT: float = env("INSIDER_MAX_PCT", 30.0, float)
+CREATOR_MAX_PCT: float = env("CREATOR_MAX_PCT", 15.0, float)
 
 # --- scanner: detection (spec §5) ---
 SPIKE_RATIO_MIN: float = env("SPIKE_RATIO_MIN", 8.0, float)
