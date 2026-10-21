@@ -22,6 +22,7 @@ from memescreen.scanner import (
     digest,
     filters,
     momentum,
+    outcomes,
     poller,
     universe,
     walletwatch,
@@ -97,6 +98,7 @@ def cycle(
         if do_seed:
             universe.seed(store, now)
         poller.poll_once(store, now)
+        outcomes.update(store, now)
         hits = detector.detect_all(store, now)
         if hits:
             log.info(
@@ -125,10 +127,17 @@ def cycle(
                 )
                 if sent:
                     candidates.record_hit(hit.address, "spike", now)
+                    outcomes.record(store, address=hit.address, kind="spike", now=now,
+                                    snap=snap, risk=ctx.risk, age_min=ctx.age_min)
             else:
                 log.info("gate: %s dropped (%s)", hit.address[:8], reason)
                 drops[reason] = drops.get(reason, 0) + 1
                 alerter.send_reject(hit, ctx, reason, now)
+                # "cooldown" = it already alerted; recording it would copy the
+                # alert's price path into the reject cohort of !results.
+                if reason != "cooldown":
+                    outcomes.record(store, address=hit.address, kind="spike_reject", now=now,
+                                    snap=snap, reason=reason, risk=ctx.risk, age_min=ctx.age_min)
         if hits:
             # One rollup line per cycle so tuning is data-driven: which filter
             # is actually eating the hits, and how many.
@@ -146,7 +155,7 @@ def cycle(
         if do_digest:
             digest.post(store, now)
         if do_wallet:
-            walletwatch.scan(now)
+            walletwatch.scan(now, store)
     except Exception:
         log.exception("cycle failed")
 

@@ -98,6 +98,11 @@ VERDICT_AVOID_MAX: int = env("VERDICT_AVOID_MAX", 40, int)
 VERDICT_TRADE_MIN: int = env("VERDICT_TRADE_MIN", 70, int)
 
 RUGCHECK_DANGER_MAX: float = env("RUGCHECK_DANGER_MAX", 60.0, float)
+# Insider / bundle / dev gate (spec 2026-10-21 §5.3). Drops VOLUME SPIKE and
+# NEW PUMP candidates whose flagged-insider top holders, or creator wallet,
+# hold at least this % of supply. Fail-open: unknown values never drop.
+INSIDER_MAX_PCT: float = env("INSIDER_MAX_PCT", 30.0, float)
+CREATOR_MAX_PCT: float = env("CREATOR_MAX_PCT", 15.0, float)
 
 # --- scanner: detection (spec §5) ---
 SPIKE_RATIO_MIN: float = env("SPIKE_RATIO_MIN", 8.0, float)
@@ -152,7 +157,7 @@ CANDIDATE_LIST_LIMIT: int = env("CANDIDATE_LIST_LIMIT", 10, int)
 # --- scanner: NEW PUMP momentum alert (price run-up on a young token) ---
 # A separate, lighter signal from the volume-spike funnel: a freshly-polled
 # token that is already running. Posts to the #scan-rejects channel and has
-# NO safety gate -- the alert is labelled unvetted on purpose.
+# only the light insider/dev gate -- labelled 'light check only'.
 PUMP_PRICE_PCT: float = env("PUMP_PRICE_PCT", 20.0, float)      # min 1h price change, %
 PUMP_MIN_AGE_H: float = env("PUMP_MIN_AGE_H", 1.0, float)       # must be at least this old
 PUMP_MAX_AGE_H: float = env("PUMP_MAX_AGE_H", 24.0, float)      # ...and no older than this
@@ -174,6 +179,9 @@ ALERT_COOLDOWN_H: float = env("ALERT_COOLDOWN_H", 6.0, float)
 REJECT_COOLDOWN_H: float = env("REJECT_COOLDOWN_H", 2.0, float)
 HISTORY_RETENTION_H: float = env("HISTORY_RETENTION_H", 3.0, float)
 RISK_CACHE_TTL_H: float = env("RISK_CACHE_TTL_H", 6.0, float)
+# RugCheck results with no holder analysis yet (fresh launches) are re-fetched
+# after this many minutes instead of RISK_CACHE_TTL_H.
+RISK_CACHE_UNANALYSED_TTL_MIN: float = env("RISK_CACHE_UNANALYSED_TTL_MIN", 10.0, float)
 BATCH_SIZE: int = env("BATCH_SIZE", 30, int)
 
 # Paths default to <DATA_DIR>/... but each stays individually overridable.

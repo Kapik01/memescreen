@@ -1,0 +1,26 @@
+{
+  "mint": "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+  "mintAuthority": null,
+  "freezeAuthority": null,
+  "token": {"mintAuthority": null, "freezeAuthority": null, "decimals": 6, "supply": 1000000000000000},
+  "tokenMeta": {"name": "bundled", "symbol": "BNDL"},
+  "creator": "CreatorWa11et1111111111111111111111111111111",
+  "creatorBalance": 180000000000000,
+  "graphInsidersDetected": 31,
+  "insiderNetworks": [
+    {"id": "a", "size": 48, "type": "transfer", "activeAccounts": 48},
+    {"id": "b", "size": 6, "type": "trade", "activeAccounts": 6}
+  ],
+  "totalHolders": 312,
+  "topHolders": [
+    {"address": "I1", "pct": 12.5, "insider": true},
+    {"address": "I2", "pct": 9.0, "insider": true},
+    {"address": "I3", "pct": 8.5, "insider": true},
+    {"address": "N1", "pct": 4.0, "insider": false}
+  ],
+  "risks": [],
+  "markets": [{"lp": {"lpLockedPct": 100.0}}],
+  "score": 50,
+  "score_normalised": 5,
+  "rugged": false
+}

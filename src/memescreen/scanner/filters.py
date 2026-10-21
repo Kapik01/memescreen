@@ -37,6 +37,20 @@ class FilterContext:
     pumpfun_coins: int | None = None
 
 
+def insider_drop_reason(risk: RiskData | None) -> str | None:
+    """Spec 2026-10-21 §5.3. A drop reason when insiders or the creator hold
+    too much supply, else None. Fail-open: a None reading never drops --
+    RugCheck often has no insider analysis for minutes-old tokens. Reasons
+    name the threshold (not the token's value) so the cycle tally groups."""
+    if risk is None:
+        return None
+    if risk.insider_pct is not None and risk.insider_pct >= config.INSIDER_MAX_PCT:
+        return f"insiders ≥{config.INSIDER_MAX_PCT:g}%"
+    if risk.creator_pct is not None and risk.creator_pct >= config.CREATOR_MAX_PCT:
+        return f"dev holds ≥{config.CREATOR_MAX_PCT:g}%"
+    return None
+
+
 def evaluate(
     hit: AnomalyHit,
     store: Store,
@@ -88,6 +102,12 @@ def evaluate(
         return _done(False, "rugcheck danger")
     if risk.rugcheck_score is not None and risk.rugcheck_score > config.RUGCHECK_DANGER_MAX:
         return _done(False, "rugcheck danger")
+
+    # 7b. insider / bundle / dev concentration (fail-open). Before the Birdeye
+    # call so a dropped token costs no Birdeye credit.
+    insider_reason = insider_drop_reason(risk)
+    if insider_reason is not None:
+        return _done(False, insider_reason)
 
     # 8. holder growth vs. a per-token baseline recorded on first hit
     try:

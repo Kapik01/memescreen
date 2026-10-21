@@ -145,3 +145,14 @@ def test_parse_wallets_list_command():
 def test_parse_candidates_command():
     assert parse_command("!candidates").kind == "candidates"
     assert parse_command("!smart").kind == "candidates"
+
+
+def test_parse_results_command():
+    from memescreen.journal.messages import parse_command
+    assert parse_command("!results").kind == "results"
+    assert parse_command("!results").days == 7
+    assert parse_command("!results 3").days == 3
+    assert parse_command("!RESULTS 99").days == 30     # clamped
+    assert parse_command("!results 0").days == 1       # clamped
+    assert parse_command("!results soon").days == 7    # junk -> default
+    assert parse_command("!resultsx") is None

@@ -402,3 +402,51 @@ def test_pumpfun_lookup_raising_does_not_break_the_gate(monkeypatch):
 
         assert (passed, reason) == (True, "")  # fail-open
         assert ctx.pumpfun_coins is None
+
+
+# --- 7b. insider / dev concentration (fail-open) ----------------------------
+
+def test_insider_drop_reason_thresholds():
+    assert filters.insider_drop_reason(None) is None
+    assert filters.insider_drop_reason(_risk()) is None                      # all None
+    assert filters.insider_drop_reason(_risk(insider_pct=29.9)) is None
+    assert filters.insider_drop_reason(_risk(insider_pct=30.0)) == "insiders ≥30%"
+    assert filters.insider_drop_reason(_risk(creator_pct=14.9)) is None
+    assert filters.insider_drop_reason(_risk(creator_pct=15.0)) == "dev holds ≥15%"
+
+
+def test_insider_heavy_token_is_dropped_before_birdeye(monkeypatch):
+    with Store(":memory:") as store:
+        _passing_setup(store, monkeypatch)
+        birdeye_calls = []
+        monkeypatch.setattr(
+            filters.birdeye, "fetch_holder_data",
+            lambda addr: birdeye_calls.append(addr) or _holders(),
+        )
+        risk_cache = _RiskCacheStub(_risk(insider_pct=42.0))
+
+        passed, reason, ctx = filters.evaluate(_hit(), store, risk_cache, _snap())
+
+        assert (passed, reason) == (False, "insiders ≥30%")
+        assert ctx.risk.insider_pct == 42.0
+        assert birdeye_calls == []          # gate ran before the paid call
+
+
+def test_dev_heavy_token_is_dropped(monkeypatch):
+    with Store(":memory:") as store:
+        _passing_setup(store, monkeypatch)
+        risk_cache = _RiskCacheStub(_risk(creator_pct=20.0))
+        passed, reason, _ = filters.evaluate(_hit(), store, risk_cache, _snap())
+        assert (passed, reason) == (False, "dev holds ≥15%")
+
+
+def test_unknown_insider_data_passes(monkeypatch):
+    with Store(":memory:") as store:
+        risk_cache = _passing_setup(store, monkeypatch)   # _risk(): insider fields None
+        passed, reason, _ = filters.evaluate(_hit(), store, risk_cache, _snap())
+        assert (passed, reason) == (True, "")
+
+
+def test_insider_threshold_is_env_tunable(monkeypatch):
+    monkeypatch.setattr(config, "INSIDER_MAX_PCT", 10.0)
+    assert filters.insider_drop_reason(_risk(insider_pct=12.0)) == "insiders ≥10%"

@@ -39,6 +39,13 @@ class RiskData:
     risk_flags: list[str] = field(default_factory=list)
     # Subset of risk_flags whose RugCheck entry carried level == "danger".
     danger_flags: list[str] = field(default_factory=list)
+    # Insider / bundle / dev concentration from RugCheck's full report
+    # (spec 2026-10-21 §5). None = RugCheck didn't say (summary endpoint,
+    # brand-new token) -- never treated as "clean" or "dirty".
+    insider_pct: float | None = None           # sum of pct over top holders flagged insider
+    insider_network_size: int | None = None    # largest linked-wallet network
+    creator_pct: float | None = None           # creator wallet's % of supply
+    total_holders: int | None = None
     source: str = "rugcheck"
 
 

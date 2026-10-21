@@ -7,9 +7,10 @@ between `PUMP_MIN_AGE_H` and `PUMP_MAX_AGE_H`, 24h volume above market cap,
 liquidity above `PUMP_MIN_LIQUIDITY`, and the top-10 holders (from RugCheck,
 keyless) at or under `PUMP_MAX_TOP10_PCT` of supply.
 
-There is deliberately NO safety gate here -- these alerts go to their own
-`DISCORD_PUMP_WEBHOOK_URL` channel labelled unvetted. Dedup is one alert per
-token per `PUMP_COOLDOWN_H`, tracked in `pump_alerts_sent`.
+The only safety check here is the light insider/dev gate
+(`filters.insider_drop_reason`, fail-open). These alerts go to their own
+`DISCORD_PUMP_WEBHOOK_URL` channel labelled "light check only". Dedup is one
+alert per token per `PUMP_COOLDOWN_H`, tracked in `pump_alerts_sent`.
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from datetime import datetime
 
 from memescreen import config
 from memescreen.models import MarketSnapshot, RiskData
-from memescreen.scanner import alerter, candidates
+from memescreen.scanner import alerter, candidates, filters, outcomes
 from memescreen.scanner.riskcache import RiskCache
 from memescreen.scanner.store import Store
 
@@ -65,14 +66,23 @@ def scan(store: Store, risk_cache: RiskCache, now: datetime) -> int:
         if store.recent_pump_alert(snap.address, now, config.PUMP_COOLDOWN_H):
             continue
         checked += 1
-        top10 = _top10_pct(risk_cache.get(snap.address))
+        risk = risk_cache.get(snap.address)
+        top10 = _top10_pct(risk)
         if top10 is None or top10 > config.PUMP_MAX_TOP10_PCT:
             continue
+        drop = filters.insider_drop_reason(risk)
+        if drop is not None:
+            _log.info("momentum: %s dropped (%s)", snap.address[:8], drop)
+            outcomes.record(store, address=snap.address, kind="pump_reject", now=now,
+                            snap=snap, reason=drop, risk=risk)
+            continue
         age_min = (now - snap.pair_created_at).total_seconds() / 60.0
-        if alerter.send_pump(snap, top10, age_min, now):
+        if alerter.send_pump(snap, top10, age_min, now, risk=risk):
             store.record_pump_alert(snap.address, now, snap.price_change_h1)
             sent += 1
             candidates.record_hit(snap.address, "pump", now)
+            outcomes.record(store, address=snap.address, kind="pump", now=now,
+                            snap=snap, risk=risk, age_min=age_min)
 
     if checked or sent:
         _log.info("momentum: %d candidate(s) checked, %d NEW PUMP alert(s) sent", checked, sent)

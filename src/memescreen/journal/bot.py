@@ -32,7 +32,7 @@ def _replied_text(message) -> str | None:
     return None  # caller falls back to an explicit fetch
 
 
-async def _amain(token: str) -> None:
+async def _amain(token: str, with_results: bool = False) -> None:
     import discord
 
     intents = discord.Intents.default()
@@ -40,6 +40,15 @@ async def _amain(token: str) -> None:
     client = discord.Client(intents=intents)
     store = JournalStore(config.JOURNAL_DB_PATH)
     allow = config.JOURNAL_CHANNEL_IDS
+
+    # `!results` reads the scanner's DB, so it is only offered when the bot is
+    # co-hosted inside `scan` (start_in_thread), not run standalone.
+    results_fn = None
+    if with_results:
+        from memescreen.scanner import outcomes
+
+        def results_fn(days: int) -> str:
+            return outcomes.results_text(config.DB_PATH, days, datetime.now(UTC))
 
     @client.event
     async def on_ready() -> None:  # pragma: no cover - needs a live gateway
@@ -81,6 +90,7 @@ async def _amain(token: str) -> None:
                 author_id=str(message.author.id),
                 store=store,
                 now=datetime.now(UTC),
+                results=results_fn,
             )
         except Exception:
             _log.exception("journal handle() failed")
@@ -110,7 +120,7 @@ def run() -> int:
 
 def _run_forever(token: str) -> None:  # pragma: no cover - thread target
     try:
-        asyncio.run(_amain(token))
+        asyncio.run(_amain(token, with_results=True))
     except Exception:
         _log.exception("journal bot thread crashed")
 

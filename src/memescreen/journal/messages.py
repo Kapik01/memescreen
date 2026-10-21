@@ -59,11 +59,12 @@ def _num(token: str) -> float | None:
 @dataclass
 class Command:
     kind: str  # 'in' | 'out' | 'note' | 'stats' | 'open' | 'help' |
-               # 'watch' | 'unwatch' | 'wallets' | 'watch_help'
+               # 'watch' | 'unwatch' | 'wallets' | 'watch_help' | 'results'
     price: float | None = None
     size: float | None = None
     note: str | None = None
     address: str | None = None
+    days: int | None = None
 
 
 def parse_command(text: str) -> Command | None:
@@ -80,6 +81,12 @@ def parse_command(text: str) -> Command | None:
         return Command("wallets")
     if low in ("!candidates", "!smart"):
         return Command("candidates")
+    if low == "!results" or low.startswith("!results "):
+        parts2 = low.split()
+        days = 7
+        if len(parts2) >= 2 and parts2[1].isdigit():
+            days = max(1, min(30, int(parts2[1])))
+        return Command("results", days=days)
 
     if low.startswith("!watch"):
         parts2 = t.split(maxsplit=2)

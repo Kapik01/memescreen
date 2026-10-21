@@ -1,5 +1,6 @@
 """SQLite persistence layer for the scanner: token history, the tracked
-universe, detection hits, sent alerts, and per-token hit context. One
+universe, detection hits, sent alerts, per-token hit context, and alert
+outcomes. One
 `sqlite3.Connection` per `Store` instance; every write commits immediately."""
 from __future__ import annotations
 
@@ -40,6 +41,24 @@ CREATE TABLE IF NOT EXISTS hit_context (
   address TEXT PRIMARY KEY, first_seen_at TEXT NOT NULL,
   first_holder_count INTEGER, first_holder_count_at TEXT
 );
+CREATE TABLE IF NOT EXISTS alert_outcomes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  address TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  reason TEXT,
+  alerted_at TEXT NOT NULL,
+  symbol TEXT,
+  price0 REAL, mcap0 REAL, liq0 REAL,
+  age_min0 REAL, change_h1_0 REAL,
+  insider_pct REAL, insider_net INTEGER, creator_pct REAL,
+  price_15m REAL, price_1h REAL, price_6h REAL,
+  peak_price REAL, trough_price REAL,
+  last_price REAL, last_seen_at TEXT,
+  rugged INTEGER NOT NULL DEFAULT 0,
+  closed INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS ix_outcomes_open ON alert_outcomes(closed, address);
+CREATE INDEX IF NOT EXISTS ix_outcomes_time ON alert_outcomes(alerted_at);
 """
 
 _HISTORY_COLUMNS = (
@@ -60,6 +79,23 @@ _HISTORY_ADDED_COLUMNS = (
     ("pair_created_at", "TEXT"), ("dex", "TEXT"), ("symbol", "TEXT"),
     ("price_change_h1", "REAL"),
 )
+
+# Tokens with an open outcome row are never evicted: after a long scanner
+# outage the first seed would otherwise drop them, they'd stop being polled,
+# and the outcome tracker would read that as a rug.
+_NOT_OPEN_OUTCOME = (
+    "address NOT IN (SELECT address FROM alert_outcomes WHERE closed = 0)"
+)
+
+# Writable alert_outcomes columns. Column names are interpolated into SQL by
+# insert_outcome / update_outcome, so anything not listed here is refused.
+OUTCOME_COLUMNS: frozenset[str] = frozenset({
+    "address", "kind", "reason", "alerted_at", "symbol",
+    "price0", "mcap0", "liq0", "age_min0", "change_h1_0",
+    "insider_pct", "insider_net", "creator_pct",
+    "price_15m", "price_1h", "price_6h", "peak_price", "trough_price",
+    "last_price", "last_seen_at", "rugged", "closed",
+})
 
 
 class Store:
@@ -238,7 +274,8 @@ class Store:
         cur = self._conn.execute(
             "DELETE FROM universe WHERE "
             "(last_seen_in_feed IS NULL OR last_seen_in_feed < ?) AND "
-            "(last_activity_ts IS NULL OR last_activity_ts < ?)",
+            "(last_activity_ts IS NULL OR last_activity_ts < ?) AND "
+            + _NOT_OPEN_OUTCOME,
             (cutoff, cutoff),
         )
         deleted = cur.rowcount
@@ -250,7 +287,7 @@ class Store:
             excess = remaining - cap
             cur = self._conn.execute(
                 "DELETE FROM universe WHERE address IN ("
-                "SELECT address FROM universe "
+                "SELECT address FROM universe WHERE " + _NOT_OPEN_OUTCOME + " "
                 "ORDER BY COALESCE(last_activity_ts, first_seen) ASC LIMIT ?"
                 ")",
                 (excess,),
@@ -338,3 +375,62 @@ class Store:
             (address, now.isoformat(), holder_count, now.isoformat()),
         )
         self._conn.commit()
+
+    # --- alert_outcomes (spec 2026-10-21 §4) ---
+
+    @staticmethod
+    def _check_outcome_columns(fields: dict) -> None:
+        bad = set(fields) - OUTCOME_COLUMNS
+        if bad:
+            raise ValueError(f"unknown alert_outcomes column(s): {sorted(bad)}")
+
+    def has_open_outcome(self, address: str, kind: str) -> bool:
+        cur = self._conn.execute(
+            "SELECT 1 FROM alert_outcomes WHERE address = ? AND kind = ? AND closed = 0 LIMIT 1",
+            (address, kind),
+        )
+        return cur.fetchone() is not None
+
+    def insert_outcome(self, fields: dict) -> int:
+        self._check_outcome_columns(fields)
+        cols = list(fields)
+        cur = self._conn.execute(
+            f"INSERT INTO alert_outcomes ({', '.join(cols)}) "
+            f"VALUES ({', '.join('?' for _ in cols)})",
+            [fields[c] for c in cols],
+        )
+        self._conn.commit()
+        return int(cur.lastrowid)
+
+    def open_outcomes(self) -> list[dict]:
+        cur = self._conn.execute(
+            "SELECT * FROM alert_outcomes WHERE closed = 0 ORDER BY id"
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+    def update_outcome(self, row_id: int, fields: dict) -> None:
+        if not fields:
+            return
+        self._check_outcome_columns(fields)
+        sets = ", ".join(f"{c} = ?" for c in fields)
+        self._conn.execute(
+            f"UPDATE alert_outcomes SET {sets} WHERE id = ?",
+            [*fields.values(), row_id],
+        )
+        self._conn.commit()
+
+    def outcomes_since(self, since: datetime) -> list[dict]:
+        cur = self._conn.execute(
+            "SELECT * FROM alert_outcomes WHERE alerted_at >= ? ORDER BY alerted_at",
+            (since.isoformat(),),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+    def newest_history_ts(self) -> datetime | None:
+        """Newest poll timestamp across all tokens. Outcome staleness is
+        measured against this, not wall-clock, so a poller outage never
+        looks like every token rugging at once."""
+        row = self._conn.execute("SELECT MAX(ts) AS ts FROM token_history").fetchone()
+        if row is None or row["ts"] is None:
+            return None
+        return datetime.fromisoformat(row["ts"])
